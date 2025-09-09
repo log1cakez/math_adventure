@@ -1,0 +1,2 @@
+pygame
+moviepy>=2.0.0
