@@ -36,23 +36,38 @@ RED = (200, 0, 0)
 
 class PhotoSlideshowGame:
     def __init__(self):
-        # Initialize in fullscreen mode
-        self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-        self.screen_width, self.screen_height = self.screen.get_size()
+        # Initialize in windowed mode with resizable window - optimized for laptops
+        self.screen_width = 1600
+        self.screen_height = 1000
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
         pygame.display.set_caption("Photo Slideshow Game")
         self.clock = pygame.time.Clock()
+        self.fullscreen = False
         
-        # Scale fonts based on screen size
-        base_font_size = min(self.screen_width, self.screen_height) // 25
-        self.font_large = pygame.font.Font(None, int(base_font_size * 1.5))
-        self.font_medium = pygame.font.Font(None, int(base_font_size))
-        self.font_small = pygame.font.Font(None, int(base_font_size * 0.75))
+        # Set minimum window size for laptops
+        self.min_width = 1024
+        self.min_height = 768
+        
+        # Scale fonts based on screen size - optimized for laptops
+        base_font_size = max(24, min(self.screen_width, self.screen_height) // 30)
+        self.font_large = pygame.font.Font(None, int(base_font_size * 1.8))
+        self.font_medium = pygame.font.Font(None, int(base_font_size * 1.2))
+        self.font_small = pygame.font.Font(None, int(base_font_size))
         
         # Game state
-        self.current_state = "splash"  # splash, menu, intro, map, slideshow, level_select, mechanics
+        self.current_state = "splash"  # splash, second_page, select, exercise_level, map, slideshow, menu, mechanics
         self.current_level = 0
         self.current_photo_index = 0
         self.levels = self.load_levels()
+        self.current_exercise_level = 0
+        
+        # Drawing functionality
+        self.drawing_enabled = True
+        self.drawing_surface = None
+        self.drawing_color = (255, 0, 0)  # Red color
+        self.drawing_thickness = 3
+        self.last_mouse_pos = None
+        self.is_drawing = False
         
         # Photo management
         self.current_photos = []
@@ -60,13 +75,11 @@ class PhotoSlideshowGame:
         
         # Splash screen
         self.splash_image = self.load_splash_image()
+        self.second_page_image = self.load_second_page_image()
+        self.select_image = self.load_select_image()
+        self.exercise_level_images = self.load_exercise_level_images()
         self.mechanics_images = self.load_mechanics_images()
         self.current_mechanics_index = 0
-        
-        # Intro sequence
-        self.intro_images = self.load_intro_images()
-        self.intro_audio_files = self.load_intro_audio_files()
-        self.current_intro_index = 0
         
         # Map video
         self.map_video_path = "assets/photos/level_1/LEVEL 1.1/MAP 1 (VID).mp4"
@@ -135,7 +148,7 @@ class PhotoSlideshowGame:
     
     def load_splash_image(self) -> Optional[pygame.Surface]:
         """Load the splash screen image"""
-        splash_path = "assets/photos/FIRST PAGE.jpg"
+        splash_path = "assets/photos/FIRST PAGE.png"
         try:
             if os.path.exists(splash_path):
                 splash = pygame.image.load(splash_path)
@@ -149,12 +162,66 @@ class PhotoSlideshowGame:
             print(f"Error loading splash image: {e}")
             return None
     
+    def load_second_page_image(self) -> Optional[pygame.Surface]:
+        """Load the second page image"""
+        second_page_path = "assets/photos/FIRST PAGE (2).png"
+        try:
+            if os.path.exists(second_page_path):
+                second_page = pygame.image.load(second_page_path)
+                # Scale second page image to fit screen while maintaining aspect ratio
+                second_page = self.scale_photo_to_fit(second_page)
+                return second_page
+            else:
+                print(f"Second page image not found at {second_page_path}")
+                return None
+        except pygame.error as e:
+            print(f"Error loading second page image: {e}")
+            return None
+    
+    def load_select_image(self) -> Optional[pygame.Surface]:
+        """Load the select image"""
+        select_path = "assets/photos/EXERCISES/SELECT.png"
+        try:
+            if os.path.exists(select_path):
+                select_image = pygame.image.load(select_path)
+                # Scale select image to fit screen while maintaining aspect ratio
+                select_image = self.scale_photo_to_fit(select_image)
+                return select_image
+            else:
+                print(f"Select image not found at {select_path}")
+                return None
+        except pygame.error as e:
+            print(f"Error loading select image: {e}")
+            return None
+    
+    def load_exercise_level_images(self) -> List[pygame.Surface]:
+        """Load the exercise level images"""
+        exercise_level_images = []
+        for i in range(1, 11):  # Levels 1-10
+            level_path = f"assets/photos/EXERCISES/LEVEL {i}.png"
+            try:
+                if os.path.exists(level_path):
+                    level_image = pygame.image.load(level_path)
+                    # Scale level image to fit screen while maintaining aspect ratio
+                    level_image = self.scale_photo_to_fit(level_image)
+                    exercise_level_images.append(level_image)
+                    print(f"Loaded exercise level {i} image: {level_path}")
+                else:
+                    print(f"Exercise level {i} image not found at {level_path}")
+                    exercise_level_images.append(None)
+            except pygame.error as e:
+                print(f"Error loading exercise level {i} image: {e}")
+                exercise_level_images.append(None)
+        
+        return exercise_level_images
+    
     def load_mechanics_images(self) -> List[pygame.Surface]:
         """Load the mechanics images"""
         mechanics_images = []
         mechanics_paths = [
-            "assets/photos/mechanics/mechanics_1.png",
-            "assets/photos/mechanics/mechanics_2.png"
+            "assets/photos/mechanics/WELCOME.png",
+            "assets/photos/mechanics/MECHANICS PART 1.png",
+            "assets/photos/mechanics/MECHANICS PART 2.png",
         ]
         
         for path in mechanics_paths:
@@ -248,9 +315,11 @@ class PhotoSlideshowGame:
             self.play_level_audio(level_index)
     
     def scale_photo_to_fit(self, photo: pygame.Surface) -> pygame.Surface:
-        """Scale photo to fit screen while maintaining aspect ratio"""
+        """Scale photo to fit screen while maintaining aspect ratio - optimized for laptops"""
         photo_width, photo_height = photo.get_size()
-        screen_width, screen_height = self.screen_width - 100, self.screen_height - 150  # Leave margin
+        # Larger margins for laptop screens to accommodate larger UI elements
+        screen_width = self.screen_width - max(120, self.screen_width // 10)
+        screen_height = self.screen_height - max(200, self.screen_height // 5)
         
         # Calculate scaling factor
         scale_x = screen_width / photo_width
@@ -296,8 +365,8 @@ class PhotoSlideshowGame:
             pygame.draw.rect(self.screen, (255, 255, 0), self.gear_area, 3)
             
             # Add multiple clickable areas for testing
-            # Top right corner area
-            top_right_area = pygame.Rect(splash_rect.x + splash_rect.width * 0.8, splash_rect.y, splash_rect.width * 0.2, splash_rect.height * 0.2)
+            # Top right corner area (10% width, 20% height)
+            top_right_area = pygame.Rect(splash_rect.x + splash_rect.width * 0.9, splash_rect.y, splash_rect.width * 0.1, splash_rect.height * 0.2)
             pygame.draw.rect(self.screen, (0, 255, 0), top_right_area, 2)  # Green rectangle
             
             # Add debug text
@@ -314,17 +383,112 @@ class PhotoSlideshowGame:
             title_rect = title.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 50))
             self.screen.blit(title, title_rect)
         
-        # Instructions to proceed
-        instruction_text = "Click anywhere to start intro, or click gear for mechanics..."
+        # Instructions to proceed - moved to footer
+        instruction_text = "Click anywhere to continue, or click gear for mechanics..."
         instruction = self.font_medium.render(instruction_text, True, WHITE)
-        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 100))
+        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
+        self.screen.blit(instruction, instruction_rect)
+    
+    def draw_second_page(self):
+        """Draw the second page"""
+        self.screen.fill(BLACK)
+        
+        if self.second_page_image:
+            # Display the second page image centered
+            second_page_rect = self.second_page_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+            self.screen.blit(self.second_page_image, second_page_rect)
+            
+            # Set up clickable top right area for mechanics (10% width, 20% height)
+            self.top_right_area = pygame.Rect(second_page_rect.x + second_page_rect.width * 0.9, second_page_rect.y, second_page_rect.width * 0.1, second_page_rect.height * 0.2)
+            
+            # Draw a visible indicator to help debug (green rectangle)
+            pygame.draw.rect(self.screen, (0, 255, 0), self.top_right_area, 2)
+        else:
+            # Fallback if second page image not found
+            title = self.font_large.render("FIRST PAGE (2)", True, WHITE)
+            title_rect = title.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+            self.screen.blit(title, title_rect)
+            self.top_right_area = None
+        
+        # Instructions for the three options - moved to footer
+        instruction_text = "Press 1 for Exercises, 2 for Map, 3 for New Game, click top right for mechanics"
+        instruction = self.font_medium.render(instruction_text, True, WHITE)
+        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
+        self.screen.blit(instruction, instruction_rect)
+    
+    def draw_select(self):
+        """Draw the select screen"""
+        self.screen.fill(BLACK)
+        
+        if self.select_image:
+            # Display the select image centered
+            select_rect = self.select_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+            self.screen.blit(self.select_image, select_rect)
+            
+            # Set up clickable top right area for mechanics (10% width, 20% height)
+            self.top_right_area = pygame.Rect(select_rect.x + select_rect.width * 0.9, select_rect.y, select_rect.width * 0.1, select_rect.height * 0.2)
+            
+            # Draw a visible indicator to help debug (green rectangle)
+            pygame.draw.rect(self.screen, (0, 255, 0), self.top_right_area, 2)
+        else:
+            # Fallback if select image not found
+            title = self.font_large.render("SELECT", True, WHITE)
+            title_rect = title.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+            self.screen.blit(title, title_rect)
+            self.top_right_area = None
+        
+        # Instructions for level selection - moved to footer
+        instruction_text = "Press 1-10 to select a level, ESC to go back, click top right for mechanics"
+        instruction = self.font_medium.render(instruction_text, True, WHITE)
+        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
+        self.screen.blit(instruction, instruction_rect)
+    
+    def draw_exercise_level(self):
+        """Draw the exercise level screen"""
+        self.screen.fill(BLACK)
+        
+        # Display the current exercise level image
+        if (self.current_exercise_level > 0 and 
+            self.current_exercise_level <= len(self.exercise_level_images) and 
+            self.exercise_level_images[self.current_exercise_level - 1]):
+            
+            level_image = self.exercise_level_images[self.current_exercise_level - 1]
+            level_rect = level_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+            self.screen.blit(level_image, level_rect)
+            
+            # Initialize drawing surface if not exists or if level changed
+            if self.drawing_surface is None or self.drawing_surface.get_size() != level_rect.size:
+                self.drawing_surface = pygame.Surface(level_rect.size, pygame.SRCALPHA)
+                self.drawing_surface.fill((0, 0, 0, 0))  # Transparent background
+            
+            # Draw the drawing surface on top of the level image
+            self.screen.blit(self.drawing_surface, level_rect)
+            
+            # Set up clickable top right area for mechanics (10% width, 20% height)
+            self.top_right_area = pygame.Rect(level_rect.x + level_rect.width * 0.9, level_rect.y, level_rect.width * 0.1, level_rect.height * 0.2)
+            
+            # Draw a visible indicator to help debug (green rectangle)
+            pygame.draw.rect(self.screen, (0, 255, 0), self.top_right_area, 2)
+        else:
+            # Fallback if level image not found
+            title = self.font_large.render(f"LEVEL {self.current_exercise_level}", True, WHITE)
+            title_rect = title.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+            self.screen.blit(title, title_rect)
+            self.top_right_area = None
+            self.drawing_surface = None
+        
+        # Instructions for drawing and navigation - moved to footer
+        instruction_text = "Draw with mouse, C to clear, 1-5 for colors, ESC to go back, click top right for mechanics"
+        instruction = self.font_medium.render(instruction_text, True, WHITE)
+        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
         self.screen.blit(instruction, instruction_rect)
         
-        # Show Tab instruction
-        tab_text = "Press TAB for level selection"
-        tab_surface = self.font_small.render(tab_text, True, WHITE)
-        tab_rect = tab_surface.get_rect(center=(self.screen_width // 2, self.screen_height - 50))
-        self.screen.blit(tab_surface, tab_rect)
+        # Show current drawing color - optimized for laptops
+        color_text = f"Color: {self.drawing_color}"
+        color_surface = self.font_small.render(color_text, True, self.drawing_color)
+        color_rect = color_surface.get_rect()
+        color_rect.topleft = (max(20, self.screen_width // 40), max(20, self.screen_height // 40))
+        self.screen.blit(color_surface, color_rect)
     
     def draw_intro(self):
         """Draw the intro sequence"""
@@ -421,10 +585,10 @@ class PhotoSlideshowGame:
                     video_rect = scaled_video.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                     self.screen.blit(scaled_video, video_rect)
                     
-                    # Show level selection instructions
+                    # Show level selection instructions - moved to footer
                     instruction_text = "Press 1 for Level 1, Press 2 for Level 2, Press 3 for Level 3"
                     instruction = self.font_medium.render(instruction_text, True, WHITE)
-                    instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 50))
+                    instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
                     self.screen.blit(instruction, instruction_rect)
                     
             except Exception as e:
@@ -475,16 +639,16 @@ class PhotoSlideshowGame:
                 status_rect = status_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 50))
                 self.screen.blit(status_surface, status_rect)
                 
-                # Show level selection instructions
+                # Show level selection instructions - moved to footer
                 instruction_text = "Press 1 for Level 1, Press 2 for Level 2, Press 3 for Level 3"
                 instruction = self.font_medium.render(instruction_text, True, WHITE)
-                instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 50))
+                instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
                 self.screen.blit(instruction, instruction_rect)
             
-            # Show level selection instructions at bottom
+            # Show level selection instructions at footer
             instruction_text = "Press 1 for Level 1, Press 2 for Level 2, Press 3 for Level 3"
             instruction = self.font_medium.render(instruction_text, True, WHITE)
-            instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 50))
+            instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
             self.screen.blit(instruction, instruction_rect)
         else:
             # Show error message if video file not found
@@ -622,12 +786,9 @@ class PhotoSlideshowGame:
                 self.toggle_fullscreen()
             elif event.key == pygame.K_ESCAPE:
                 return False  # Quit game
-            elif event.key == pygame.K_TAB:
-                # Tab pressed - go directly to map video for level selection
-                self.start_map_video()
             else:
-                # Any other key press starts intro
-                self.start_game()
+                # Any other key press goes to second page
+                self.current_state = "second_page"
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
                 mouse_pos = pygame.mouse.get_pos()
@@ -641,7 +802,7 @@ class PhotoSlideshowGame:
                 # Also check if clicked in the top-right area of the image
                 if self.splash_image:
                     splash_rect = self.splash_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
-                    top_right_area = pygame.Rect(splash_rect.x + splash_rect.width * 0.8, splash_rect.y, splash_rect.width * 0.2, splash_rect.height * 0.2)
+                    top_right_area = pygame.Rect(splash_rect.x + splash_rect.width * 0.9, splash_rect.y, splash_rect.width * 0.1, splash_rect.height * 0.2)
                     top_right_clicked = top_right_area.collidepoint(mouse_pos)
                     print(f"Top right area: {top_right_area}")
                     print(f"Top right clicked: {top_right_clicked}")
@@ -650,9 +811,167 @@ class PhotoSlideshowGame:
                     print("Gear area clicked! Going to mechanics...")
                     self.current_state = "mechanics"
                 else:
-                    print("Clicked outside gear area, starting intro...")
-                    # Click anywhere else starts intro
-                    self.start_game()
+                    print("Clicked outside gear area, going to second page...")
+                    # Click anywhere else goes to second page
+                    self.current_state = "second_page"
+        return True
+    
+    def handle_second_page_input(self, event):
+        """Handle input in second page state"""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_F11:
+                # Toggle fullscreen
+                self.toggle_fullscreen()
+            elif event.key == pygame.K_ESCAPE:
+                return False  # Quit game
+            elif event.key == pygame.K_1:
+                # Go to exercises (SELECT.png)
+                self.current_state = "select"
+            elif event.key == pygame.K_2:
+                # Go to map
+                self.start_map_video()
+            elif event.key == pygame.K_3:
+                # Go to new game (map video for now)
+                self.start_map_video()
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:  # Left mouse button
+                mouse_pos = pygame.mouse.get_pos()
+                print(f"Mouse clicked at: {mouse_pos}")
+                print(f"Top right area: {self.top_right_area}")
+                
+                top_right_clicked = self.top_right_area and self.top_right_area.collidepoint(mouse_pos)
+                if top_right_clicked:
+                    print("Top right area clicked! Going to mechanics...")
+                    self.current_state = "mechanics"
+                else:
+                    print("Clicked outside top right area, going to map...")
+                    # Click anywhere else goes to map
+                    self.start_map_video()
+        return True
+    
+    def handle_select_input(self, event):
+        """Handle input in select state"""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_F11:
+                # Toggle fullscreen
+                self.toggle_fullscreen()
+            elif event.key == pygame.K_ESCAPE:
+                # Go back to second page
+                self.current_state = "second_page"
+            elif event.key == pygame.K_1:
+                self.current_exercise_level = 1
+                self.current_state = "exercise_level"
+            elif event.key == pygame.K_2:
+                self.current_exercise_level = 2
+                self.current_state = "exercise_level"
+            elif event.key == pygame.K_3:
+                self.current_exercise_level = 3
+                self.current_state = "exercise_level"
+            elif event.key == pygame.K_4:
+                self.current_exercise_level = 4
+                self.current_state = "exercise_level"
+            elif event.key == pygame.K_5:
+                self.current_exercise_level = 5
+                self.current_state = "exercise_level"
+            elif event.key == pygame.K_6:
+                self.current_exercise_level = 6
+                self.current_state = "exercise_level"
+            elif event.key == pygame.K_7:
+                self.current_exercise_level = 7
+                self.current_state = "exercise_level"
+            elif event.key == pygame.K_8:
+                self.current_exercise_level = 8
+                self.current_state = "exercise_level"
+            elif event.key == pygame.K_9:
+                self.current_exercise_level = 9
+                self.current_state = "exercise_level"
+            elif event.key == pygame.K_0:
+                self.current_exercise_level = 10
+                self.current_state = "exercise_level"
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:  # Left mouse button
+                mouse_pos = pygame.mouse.get_pos()
+                print(f"Mouse clicked at: {mouse_pos}")
+                print(f"Top right area: {self.top_right_area}")
+                
+                top_right_clicked = self.top_right_area and self.top_right_area.collidepoint(mouse_pos)
+                if top_right_clicked:
+                    print("Top right area clicked! Going to mechanics...")
+                    self.current_state = "mechanics"
+                else:
+                    print("Clicked outside top right area, going back to second page...")
+                    # Click anywhere else goes back to second page
+                    self.current_state = "second_page"
+        return True
+    
+    def handle_exercise_level_input(self, event):
+        """Handle input in exercise level state"""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_F11:
+                # Toggle fullscreen
+                self.toggle_fullscreen()
+            elif event.key == pygame.K_ESCAPE:
+                # Go back to select screen
+                self.current_state = "select"
+            elif event.key == pygame.K_c:
+                # Clear drawing
+                if self.drawing_surface:
+                    self.drawing_surface.fill((0, 0, 0, 0))
+            elif event.key == pygame.K_1:
+                # Red color
+                self.drawing_color = (255, 0, 0)
+            elif event.key == pygame.K_2:
+                # Green color
+                self.drawing_color = (0, 255, 0)
+            elif event.key == pygame.K_3:
+                # Blue color
+                self.drawing_color = (0, 0, 255)
+            elif event.key == pygame.K_4:
+                # Yellow color
+                self.drawing_color = (255, 255, 0)
+            elif event.key == pygame.K_5:
+                # Black color
+                self.drawing_color = (0, 0, 0)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:  # Left mouse button
+                mouse_pos = pygame.mouse.get_pos()
+                print(f"Mouse clicked at: {mouse_pos}")
+                print(f"Top right area: {self.top_right_area}")
+                
+                top_right_clicked = self.top_right_area and self.top_right_area.collidepoint(mouse_pos)
+                if top_right_clicked:
+                    print("Top right area clicked! Going to mechanics...")
+                    self.current_state = "mechanics"
+                else:
+                    # Start drawing
+                    self.is_drawing = True
+                    self.last_mouse_pos = mouse_pos
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:  # Left mouse button
+                self.is_drawing = False
+                self.last_mouse_pos = None
+        elif event.type == pygame.MOUSEMOTION:
+            if self.is_drawing and self.drawing_surface and self.last_mouse_pos:
+                current_pos = pygame.mouse.get_pos()
+                
+                # Convert screen coordinates to drawing surface coordinates
+                if (self.current_exercise_level > 0 and 
+                    self.current_exercise_level <= len(self.exercise_level_images) and 
+                    self.exercise_level_images[self.current_exercise_level - 1]):
+                    
+                    level_image = self.exercise_level_images[self.current_exercise_level - 1]
+                    level_rect = level_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                    
+                    # Check if mouse is within the level image area
+                    if level_rect.collidepoint(current_pos):
+                        # Convert to drawing surface coordinates
+                        draw_pos = (current_pos[0] - level_rect.x, current_pos[1] - level_rect.y)
+                        last_draw_pos = (self.last_mouse_pos[0] - level_rect.x, self.last_mouse_pos[1] - level_rect.y)
+                        
+                        # Draw line on the drawing surface
+                        pygame.draw.line(self.drawing_surface, self.drawing_color, last_draw_pos, draw_pos, self.drawing_thickness)
+                        
+                        self.last_mouse_pos = current_pos
         return True
     
     def handle_intro_input(self, event):
@@ -780,10 +1099,8 @@ class PhotoSlideshowGame:
         return True
     
     def start_game(self):
-        """Start the game with default level"""
-        self.current_level = 0  # Use first level as default
-        self.load_photos_for_level(0)
-        self.start_intro_sequence()
+        """Start the game - go to second page"""
+        self.current_state = "second_page"
     
     def start_intro_sequence(self):
         """Start the intro sequence"""
@@ -921,22 +1238,27 @@ class PhotoSlideshowGame:
             # pygame.mixer.music.play()
     
     def toggle_fullscreen(self):
-        """Toggle between fullscreen and windowed mode"""
-        if self.screen.get_flags() & pygame.FULLSCREEN:
-            # Currently fullscreen, switch to windowed
-            self.screen = pygame.display.set_mode((1200, 800))
+        """Toggle between fullscreen and windowed mode - optimized for laptops"""
+        if self.fullscreen:
+            # Currently fullscreen, switch to windowed with laptop-optimized size
+            self.screen = pygame.display.set_mode((1600, 1000), pygame.RESIZABLE)
+            self.fullscreen = False
         else:
             # Currently windowed, switch to fullscreen
             self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            self.fullscreen = True
         
         # Update screen dimensions
         self.screen_width, self.screen_height = self.screen.get_size()
         
-        # Recalculate font sizes
-        base_font_size = min(self.screen_width, self.screen_height) // 25
-        self.font_large = pygame.font.Font(None, int(base_font_size * 1.5))
-        self.font_medium = pygame.font.Font(None, int(base_font_size))
-        self.font_small = pygame.font.Font(None, int(base_font_size * 0.75))
+        # Recalculate font sizes - optimized for laptops
+        base_font_size = max(24, min(self.screen_width, self.screen_height) // 30)
+        self.font_large = pygame.font.Font(None, int(base_font_size * 1.8))
+        self.font_medium = pygame.font.Font(None, int(base_font_size * 1.2))
+        self.font_small = pygame.font.Font(None, int(base_font_size))
+        
+        # Reset drawing surface to None so it gets recreated with new size
+        self.drawing_surface = None
     
     def run(self):
         """Main game loop"""
@@ -946,8 +1268,17 @@ class PhotoSlideshowGame:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                elif event.type == pygame.VIDEORESIZE:
+                    # Handle window resize
+                    self.handle_window_resize(event.w, event.h)
                 elif self.current_state == "splash":
                     running = self.handle_splash_input(event)
+                elif self.current_state == "second_page":
+                    running = self.handle_second_page_input(event)
+                elif self.current_state == "select":
+                    running = self.handle_select_input(event)
+                elif self.current_state == "exercise_level":
+                    running = self.handle_exercise_level_input(event)
                 elif self.current_state == "intro":
                     running = self.handle_intro_input(event)
                 elif self.current_state == "map":
@@ -962,6 +1293,12 @@ class PhotoSlideshowGame:
             # Draw current state
             if self.current_state == "splash":
                 self.draw_splash()
+            elif self.current_state == "second_page":
+                self.draw_second_page()
+            elif self.current_state == "select":
+                self.draw_select()
+            elif self.current_state == "exercise_level":
+                self.draw_exercise_level()
             elif self.current_state == "intro":
                 self.draw_intro()
             elif self.current_state == "map":
@@ -978,6 +1315,29 @@ class PhotoSlideshowGame:
         
         pygame.quit()
         sys.exit()
+    
+    def handle_window_resize(self, width, height):
+        """Handle window resize events - optimized for laptops"""
+        # Enforce minimum window size
+        width = max(width, self.min_width)
+        height = max(height, self.min_height)
+        
+        self.screen_width = width
+        self.screen_height = height
+        
+        # Update screen size
+        self.screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
+        
+        # Recalculate font sizes based on new screen size - optimized for laptops
+        base_font_size = max(24, min(self.screen_width, self.screen_height) // 30)
+        self.font_large = pygame.font.Font(None, int(base_font_size * 1.8))
+        self.font_medium = pygame.font.Font(None, int(base_font_size * 1.2))
+        self.font_small = pygame.font.Font(None, int(base_font_size))
+        
+        # Reset drawing surface to None so it gets recreated with new size
+        self.drawing_surface = None
+        
+        print(f"Window resized to: {width}x{height} (laptop optimized)")
 
 if __name__ == "__main__":
     game = PhotoSlideshowGame()
