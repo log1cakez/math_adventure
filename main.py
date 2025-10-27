@@ -2,6 +2,15 @@ import pygame
 import os
 import sys
 from typing import List, Dict, Optional
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 try:
     import moviepy
     from moviepy.editor import VideoFileClip
@@ -100,8 +109,20 @@ class PhotoSlideshowGame:
         self.completed_levels = set()  # Track which levels have been completed
         self.total_levels = 10  # Total number of levels (1-10)
         
+        # Text input for problem solving questions
+        self.text_input_active = False
+        self.text_input_value = ""
+        self.text_input_cursor_blink = 0
+        self.text_input_rect = pygame.Rect(0, 0, 400, 60)
+        
+        # New game intro sequence
+        self.intro_image = None
+        
         # Interactive areas (you can adjust these coordinates based on your image)
         self.gear_area = None  # Will be set based on image dimensions
+        
+        # Start playing background music when app launches
+        self.play_background_music()
         
     def load_levels(self) -> List[Dict]:
         """Load level information from directories"""
@@ -131,7 +152,7 @@ class PhotoSlideshowGame:
     
     def load_splash_image(self) -> Optional[pygame.Surface]:
         """Load the splash screen image"""
-        splash_path = "assets/photos/FIRST PAGE.png"
+        splash_path = resource_path("assets/photos/FIRST PAGE.png")
         try:
             if os.path.exists(splash_path):
                 splash = pygame.image.load(splash_path)
@@ -147,7 +168,7 @@ class PhotoSlideshowGame:
     
     def load_second_page_image(self) -> Optional[pygame.Surface]:
         """Load the second page image"""
-        second_page_path = "assets/photos/FIRST PAGE (2).png"
+        second_page_path = resource_path("assets/photos/FIRST PAGE (2).png")
         try:
             if os.path.exists(second_page_path):
                 second_page = pygame.image.load(second_page_path)
@@ -163,7 +184,7 @@ class PhotoSlideshowGame:
     
     def load_select_image(self) -> Optional[pygame.Surface]:
         """Load the select image"""
-        select_path = "assets/photos/EXERCISES/SELECT.png"
+        select_path = resource_path("assets/photos/EXERCISES/SELECT.png")
         try:
             if os.path.exists(select_path):
                 select_image = pygame.image.load(select_path)
@@ -181,7 +202,7 @@ class PhotoSlideshowGame:
         """Load the exercise level images"""
         exercise_level_images = []
         for i in range(1, 11):  # Levels 1-10
-            level_path = f"assets/photos/EXERCISES/LEVEL {i}.png"
+            level_path = resource_path(f"assets/photos/EXERCISES/LEVEL {i}.png")
             try:
                 if os.path.exists(level_path):
                     level_image = pygame.image.load(level_path)
@@ -202,9 +223,9 @@ class PhotoSlideshowGame:
         """Load the mechanics images"""
         mechanics_images = []
         mechanics_paths = [
-            "assets/photos/mechanics/WELCOME.png",
-            "assets/photos/mechanics/MECHANICS PART 1.png",
-            "assets/photos/mechanics/MECHANICS PART 2.png",
+            resource_path("assets/photos/mechanics/WELCOME.png"),
+            resource_path("assets/photos/mechanics/MECHANICS PART 1.png"),
+            resource_path("assets/photos/mechanics/MECHANICS PART 2.png"),
         ]
         
         for path in mechanics_paths:
@@ -225,7 +246,7 @@ class PhotoSlideshowGame:
     def load_map_image(self) -> Optional[pygame.Surface]:
         """Load the map image"""
         try:
-            map_path = "assets/photos/MAP.png"
+            map_path = resource_path("assets/photos/MAP.png")
             
             if os.path.exists(map_path):
                 image = pygame.image.load(map_path)
@@ -243,8 +264,8 @@ class PhotoSlideshowGame:
         """Load the intro images"""
         intro_images = []
         intro_paths = [
-            "assets/photos/intro/5.png",
-            "assets/photos/intro/6.png"
+            resource_path("assets/photos/intro/5.png"),
+            resource_path("assets/photos/intro/6.png")
         ]
         
         for path in intro_paths:
@@ -266,8 +287,8 @@ class PhotoSlideshowGame:
         """Load the intro audio file paths"""
         intro_audio_files = []
         intro_audio_paths = [
-            "assets/photos/intro/intro (1) .mp4",
-            "assets/photos/intro/intro (2) before showing the map.mp4"
+            resource_path("assets/photos/intro/intro (1) .mp4"),
+            resource_path("assets/photos/intro/intro (2) before showing the map.mp4")
         ]
         
         for path in intro_audio_paths:
@@ -360,23 +381,6 @@ class PhotoSlideshowGame:
             gear_y = splash_rect.y + splash_rect.height * 0.1  # 10% from top (very top)
             gear_size = 60  # Clickable area size for the gear
             self.gear_area = pygame.Rect(gear_x, gear_y, gear_size, gear_size)
-            
-            # Draw a visible indicator to help debug (yellow rectangle)
-            pygame.draw.rect(self.screen, (255, 255, 0), self.gear_area, 3)
-            
-            # Add multiple clickable areas for testing
-            # Top right corner area (10% width, 20% height)
-            top_right_area = pygame.Rect(splash_rect.x + splash_rect.width * 0.9, splash_rect.y, splash_rect.width * 0.1, splash_rect.height * 0.2)
-            pygame.draw.rect(self.screen, (0, 255, 0), top_right_area, 2)  # Green rectangle
-            
-            # Add debug text
-            debug_text = f"Gear area: {self.gear_area}"
-            debug_surface = self.font_small.render(debug_text, True, (255, 255, 0))
-            self.screen.blit(debug_surface, (10, 10))
-            
-            debug_text2 = f"Top right area: {top_right_area}"
-            debug_surface2 = self.font_small.render(debug_text2, True, (0, 255, 0))
-            self.screen.blit(debug_surface2, (10, 30))
         else:
             # Fallback if splash image not found
             title = self.font_large.render("Photo Slideshow Game", True, WHITE)
@@ -400,9 +404,6 @@ class PhotoSlideshowGame:
             
             # Set up clickable top right area for mechanics (10% width, 20% height)
             self.top_right_area = pygame.Rect(second_page_rect.x + second_page_rect.width * 0.9, second_page_rect.y, second_page_rect.width * 0.1, second_page_rect.height * 0.2)
-            
-            # Draw a visible indicator to help debug (green rectangle)
-            pygame.draw.rect(self.screen, (0, 255, 0), self.top_right_area, 2)
         else:
             # Fallback if second page image not found
             title = self.font_large.render("FIRST PAGE (2)", True, WHITE)
@@ -427,9 +428,6 @@ class PhotoSlideshowGame:
             
             # Set up clickable top right area for mechanics (10% width, 20% height)
             self.top_right_area = pygame.Rect(select_rect.x + select_rect.width * 0.9, select_rect.y, select_rect.width * 0.1, select_rect.height * 0.2)
-            
-            # Draw a visible indicator to help debug (green rectangle)
-            pygame.draw.rect(self.screen, (0, 255, 0), self.top_right_area, 2)
         else:
             # Fallback if select image not found
             title = self.font_large.render("SELECT", True, WHITE)
@@ -466,9 +464,6 @@ class PhotoSlideshowGame:
             
             # Set up clickable top right area for mechanics (10% width, 20% height)
             self.top_right_area = pygame.Rect(level_rect.x + level_rect.width * 0.9, level_rect.y, level_rect.width * 0.1, level_rect.height * 0.2)
-            
-            # Draw a visible indicator to help debug (green rectangle)
-            pygame.draw.rect(self.screen, (0, 255, 0), self.top_right_area, 2)
         else:
             # Fallback if level image not found
             title = self.font_large.render(f"LEVEL {self.current_exercise_level}", True, WHITE)
@@ -726,8 +721,8 @@ class PhotoSlideshowGame:
                 # Go to map image
                 self.current_state = "map_image"
             elif event.key == pygame.K_3:
-                # Go to map image (same as key 2)
-                self.current_state = "map_image"
+                # Start new game with intro sequence
+                self.start_new_game()
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
                 mouse_pos = pygame.mouse.get_pos()
@@ -752,33 +747,43 @@ class PhotoSlideshowGame:
             elif event.key == pygame.K_1:
                 self.current_exercise_level = 1
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_2:
                 self.current_exercise_level = 2
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_3:
                 self.current_exercise_level = 3
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_4:
                 self.current_exercise_level = 4
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_5:
                 self.current_exercise_level = 5
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_6:
                 self.current_exercise_level = 6
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_7:
                 self.current_exercise_level = 7
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_8:
                 self.current_exercise_level = 8
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_9:
                 self.current_exercise_level = 9
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_0:
                 self.current_exercise_level = 10
                 self.current_state = "exercise_level"
+                self.play_background_music()
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
                 mouse_pos = pygame.mouse.get_pos()
@@ -1127,8 +1132,6 @@ class PhotoSlideshowGame:
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
                 mouse_pos = pygame.mouse.get_pos()
-                print(f"Mouse clicked at: {mouse_pos}")
-                print(f"Gear area: {self.gear_area}")
                 
                 # Check if click is on gear area or in top-right corner
                 gear_clicked = self.gear_area and self.gear_area.collidepoint(mouse_pos)
@@ -1139,14 +1142,10 @@ class PhotoSlideshowGame:
                     splash_rect = self.splash_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                     top_right_area = pygame.Rect(splash_rect.x + splash_rect.width * 0.9, splash_rect.y, splash_rect.width * 0.1, splash_rect.height * 0.2)
                     top_right_clicked = top_right_area.collidepoint(mouse_pos)
-                    print(f"Top right area: {top_right_area}")
-                    print(f"Top right clicked: {top_right_clicked}")
                 
                 if gear_clicked or top_right_clicked:
-                    print("Gear area clicked! Going to mechanics...")
                     self.current_state = "mechanics"
                 else:
-                    print("Clicked outside gear area, going to second page...")
                     # Click anywhere else goes to second page
                     self.current_state = "second_page"
         return True
@@ -1166,20 +1165,16 @@ class PhotoSlideshowGame:
                 # Go to map image
                 self.current_state = "map_image"
             elif event.key == pygame.K_3:
-                # Go to map image (same as key 2)
-                self.current_state = "map_image"
+                # Start new game with intro sequence
+                self.start_new_game()
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
                 mouse_pos = pygame.mouse.get_pos()
-                print(f"Mouse clicked at: {mouse_pos}")
-                print(f"Top right area: {self.top_right_area}")
                 
                 top_right_clicked = self.top_right_area and self.top_right_area.collidepoint(mouse_pos)
                 if top_right_clicked:
-                    print("Top right area clicked! Going to mechanics...")
                     self.current_state = "mechanics"
                 else:
-                    print("Clicked outside top right area, going to map image...")
                     # Click anywhere else goes to map image
                     self.current_state = "map_image"
         return True
@@ -1196,45 +1191,51 @@ class PhotoSlideshowGame:
             elif event.key == pygame.K_1:
                 self.current_exercise_level = 1
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_2:
                 self.current_exercise_level = 2
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_3:
                 self.current_exercise_level = 3
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_4:
                 self.current_exercise_level = 4
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_5:
                 self.current_exercise_level = 5
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_6:
                 self.current_exercise_level = 6
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_7:
                 self.current_exercise_level = 7
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_8:
                 self.current_exercise_level = 8
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_9:
                 self.current_exercise_level = 9
                 self.current_state = "exercise_level"
+                self.play_background_music()
             elif event.key == pygame.K_0:
                 self.current_exercise_level = 10
                 self.current_state = "exercise_level"
+                self.play_background_music()
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
                 mouse_pos = pygame.mouse.get_pos()
-                print(f"Mouse clicked at: {mouse_pos}")
-                print(f"Top right area: {self.top_right_area}")
                 
                 top_right_clicked = self.top_right_area and self.top_right_area.collidepoint(mouse_pos)
                 if top_right_clicked:
-                    print("Top right area clicked! Going to mechanics...")
                     self.current_state = "mechanics"
                 else:
-                    print("Clicked outside top right area, going back to second page...")
                     # Click anywhere else goes back to second page
                     self.current_state = "second_page"
         return True
@@ -1270,12 +1271,9 @@ class PhotoSlideshowGame:
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
                 mouse_pos = pygame.mouse.get_pos()
-                print(f"Mouse clicked at: {mouse_pos}")
-                print(f"Top right area: {self.top_right_area}")
                 
                 top_right_clicked = self.top_right_area and self.top_right_area.collidepoint(mouse_pos)
                 if top_right_clicked:
-                    print("Top right area clicked! Going to mechanics...")
                     self.current_state = "mechanics"
                 else:
                     # Start drawing
@@ -1598,7 +1596,19 @@ class PhotoSlideshowGame:
         self.level_questions = []
         
         # Template structure for level questions
-        level_path = f"assets/photos/LEVEL {level_number}"
+        level_path = resource_path(f"assets/photos/LEVEL {level_number}")
+        
+        # Define answers for Level 1 based on file names
+        level_1_answers = {
+            '21.jpg': {'answer': None, 'is_scenario': True, 'needs_text_input': False},
+            '22.jpg': {'answer': None, 'is_scenario': True, 'needs_text_input': False},
+            '23.jpg': {'answer': 'B', 'is_scenario': False, 'needs_text_input': False},  # Answer B
+            '26.jpg': {'answer': 'D', 'is_scenario': False, 'needs_text_input': False},  # Answer D
+            '29.jpg': {'answer': 'A', 'is_scenario': False, 'needs_text_input': False},  # Answer A
+            '32.jpg': {'answer': 'A', 'is_scenario': False, 'needs_text_input': False},  # Answer A
+            '35.jpg': {'answer': None, 'is_scenario': False, 'needs_text_input': True},  # Text input problem
+            '39.jpg': {'answer': 'D', 'is_scenario': False, 'needs_text_input': False},  # Answer D
+        }
         
         if os.path.exists(level_path):
             # Load question images from the level directory
@@ -1613,48 +1623,77 @@ class PhotoSlideshowGame:
                 question_data = {
                     'image_path': os.path.join(level_path, question_file),
                     'question_number': i + 1,
-                    'correct_answer': 1,  # Default correct answer (1-4)
+                    'correct_answer': 1,  # Default correct answer (A=1, B=2, C=3, D=4)
                     'audio_path': None,   # Will be set if audio file exists
-                    'image': None         # Will be loaded when needed
+                    'image': None,        # Will be loaded when needed
+                    'is_scenario': False,
+                    'needs_text_input': False
                 }
                 
                 # Look for corresponding audio file
-                audio_file = question_file.rsplit('.', 1)[0] + '.mp3'
-                audio_path = os.path.join(level_path, audio_file)
+                # Special case for 22.jpg - use lvl 1.mp3
+                if question_file == '22.jpg' and level_number == 1:
+                    audio_file = 'lvl 1.mp3'
+                    audio_path = os.path.join(level_path, audio_file)
+                else:
+                    audio_file = question_file.rsplit('.', 1)[0] + '.mp3'
+                    audio_path = os.path.join(level_path, audio_file)
+                
+                # Check if specific audio file exists
                 if os.path.exists(audio_path):
-                    question_data['audio_path'] = audio_path
+                    question_data['audio_path'] = resource_path(audio_path)
+                else:
+                    # Use background music as fallback if no specific audio assigned
+                    background_music_path = resource_path("assets/audio/BACKGROUND MUSIC/BACKGROUND MUSIC.mp3")
+                    if os.path.exists(background_music_path):
+                        question_data['audio_path'] = background_music_path
+                        print(f"No audio found for {question_file}, using background music")
+                    else:
+                        question_data['audio_path'] = None
                 
                 # Set correct answers based on level
-                if level_number == 1:
-                    # Level 1: 21.jpg and 22.jpg are scenario images (no answers)
-                    # Questions start from 23.jpg with answer 2
-                    if i < 2:  # First two images (21.jpg, 22.jpg) are scenarios
-                        question_data['correct_answer'] = None  # No answer needed
-                        question_data['is_scenario'] = True
-                    else:  # Questions start from 23.jpg
-                        question_data['correct_answer'] = 2  # Answer is 2
-                        question_data['is_scenario'] = False
+                if level_number == 1 and question_file in level_1_answers:
+                    answer_info = level_1_answers[question_file]
+                    
+                    # Set scenario flag
+                    question_data['is_scenario'] = answer_info['is_scenario']
+                    question_data['needs_text_input'] = answer_info['needs_text_input']
+                    
+                    # Convert letter answer to number (A=1, B=2, C=3, D=4)
+                    answer_letter = answer_info['answer']
+                    if answer_letter:
+                        question_data['correct_answer'] = ord(answer_letter) - ord('A') + 1
+                    else:
+                        question_data['correct_answer'] = None
                 else:
-                    # Default random answers for other levels
+                    # Default for other levels
                     question_data['correct_answer'] = (i % 4) + 1
-                    question_data['is_scenario'] = False
                 
                 self.level_questions.append(question_data)
         
         print(f"Loaded {len(self.level_questions)} questions for level {level_number}")
     
     def play_question_audio(self):
-        """Play audio for current question"""
+        """Play audio for current question - use background music if no specific audio"""
         if (self.current_question_index < len(self.level_questions) and 
             self.level_questions[self.current_question_index]['audio_path']):
             
             audio_path = self.level_questions[self.current_question_index]['audio_path']
             try:
                 pygame.mixer.music.load(audio_path)
-                pygame.mixer.music.play()
-                print(f"Playing question audio: {audio_path}")
+                # If it's background music, loop it; otherwise play once
+                if "BACKGROUND MUSIC" in audio_path:
+                    pygame.mixer.music.play(-1)  # Loop indefinitely
+                    print(f"Playing background music for question {self.current_question_index + 1}: {audio_path}")
+                else:
+                    pygame.mixer.music.play()  # Play once
+                    print(f"Playing question {self.current_question_index + 1} audio: {audio_path}")
             except Exception as e:
                 print(f"Error playing question audio: {e}")
+        else:
+            # No audio for this question - stop any playing music
+            pygame.mixer.music.stop()
+            print(f"No audio for question {self.current_question_index + 1}")
     
     def handle_level_question_input(self, event):
         """Handle input in level question state"""
@@ -1663,13 +1702,36 @@ class PhotoSlideshowGame:
                 # Toggle fullscreen
                 self.toggle_fullscreen()
             elif event.key == pygame.K_ESCAPE:
-                # Go back to map
-                self.current_state = "map_image"
+                # Go back to map or close text input
+                if self.text_input_active:
+                    self.text_input_active = False
+                    self.text_input_value = ""
+                else:
+                    self.current_state = "map_image"
             elif event.key == pygame.K_SPACE:
-                # Space bar to proceed (for scenario images)
+                # Check if current question needs text input
                 if (self.current_question_index < len(self.level_questions) and 
+                    self.level_questions[self.current_question_index].get('needs_text_input', False)):
+                    # Activate text input for problem 35
+                    self.text_input_active = True
+                    self.text_input_value = ""
+                # Space bar to proceed (for scenario images)
+                elif (self.current_question_index < len(self.level_questions) and 
                     self.level_questions[self.current_question_index].get('is_scenario', False)):
                     self.check_answer(None)  # Proceed without answer
+            elif self.text_input_active:
+                # Handle text input
+                if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                    # Submit text input answer
+                    self.submit_text_answer()
+                elif event.key == pygame.K_BACKSPACE:
+                    # Remove last character
+                    self.text_input_value = self.text_input_value[:-1]
+                else:
+                    # Add character (numbers and basic math symbols)
+                    char = event.unicode
+                    if char.isdigit() or char in '+-*/=.':
+                        self.text_input_value += char
             elif event.key == pygame.K_1:
                 self.check_answer(1)
             elif event.key == pygame.K_2:
@@ -1680,8 +1742,14 @@ class PhotoSlideshowGame:
                 self.check_answer(4)
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
-                # Check if this is a scenario image
+                # Check if text input needs to be activated by click on problem image
                 if (self.current_question_index < len(self.level_questions) and 
+                    self.level_questions[self.current_question_index].get('needs_text_input', False) and not self.text_input_active):
+                    # Click anywhere on problem 35 to open text input
+                    self.text_input_active = True
+                    self.text_input_value = ""
+                # Check if this is a scenario image
+                elif (self.current_question_index < len(self.level_questions) and 
                     self.level_questions[self.current_question_index].get('is_scenario', False)):
                     # Click to proceed for scenario images
                     self.check_answer(None)
@@ -1689,6 +1757,27 @@ class PhotoSlideshowGame:
                     # Click anywhere else to go back to map
                     self.current_state = "map_image"
         return True
+    
+    def submit_text_answer(self):
+        """Submit text input answer for problem solving questions"""
+        # For problem 35, we'll accept any non-empty numeric answer for now
+        # You can modify this to check specific answer
+        if self.text_input_value.strip():
+            # Text input was provided, treat as correct for now
+            # You can add specific answer checking here
+            self.text_input_active = False
+            answer_to_check = self.text_input_value.strip()
+            
+            # For now, we'll just move to next question
+            # You can add validation here if you have a specific expected answer
+            self.text_input_value = ""
+            
+            # Mark as correct and show reward
+            self.correct_answers += 1
+            self.show_reward('correct')
+            
+            # Move to next question - this will happen when reward is dismissed
+            self.current_question_index += 1
     
     def check_answer(self, answer):
         """Check if the answer is correct"""
@@ -1724,15 +1813,6 @@ class PhotoSlideshowGame:
             
             # Move to next question after showing reward (only if correct)
             self.current_question_index += 1
-            
-            if self.current_question_index >= len(self.level_questions):
-                # All questions completed
-                self.completed_levels.add(self.current_level_number)
-                if self.correct_answers == self.total_questions:
-                    self.show_reward('stars')
-                else:
-                    # Level completed but not perfect
-                    self.current_state = "map_image"
         else:
             # Wrong answer - show reward but DON'T advance to next question
             self.show_reward('wrong')
@@ -1754,11 +1834,11 @@ class PhotoSlideshowGame:
             
         audio_path = None
         if reward_type == 'correct':
-            audio_path = "assets/audio/BACKGROUND MUSIC/CORRECT.mp3"
+            audio_path = resource_path("assets/audio/BACKGROUND MUSIC/CORRECT.mp3")
         elif reward_type == 'wrong':
-            audio_path = "assets/audio/BACKGROUND MUSIC/WRONG.mp3"
+            audio_path = resource_path("assets/audio/BACKGROUND MUSIC/WRONG.mp3")
         elif reward_type == 'stars':
-            audio_path = "assets/audio/BACKGROUND MUSIC/CORRECT.mp3"
+            audio_path = resource_path("assets/audio/BACKGROUND MUSIC/CORRECT.mp3")
         
         if audio_path and os.path.exists(audio_path):
             try:
@@ -1769,6 +1849,23 @@ class PhotoSlideshowGame:
                 print(f"Error playing reward audio: {e}")
         else:
             print(f"Reward audio not found: {audio_path}")
+    
+    def play_background_music(self):
+        """Play background music"""
+        if not self.audio_enabled:
+            return
+            
+        background_music_path = resource_path("assets/audio/BACKGROUND MUSIC/BACKGROUND MUSIC.mp3")
+        
+        if os.path.exists(background_music_path):
+            try:
+                pygame.mixer.music.load(background_music_path)
+                pygame.mixer.music.play(-1)  # Loop indefinitely
+                print(f"Playing background music: {background_music_path}")
+            except Exception as e:
+                print(f"Error playing background music: {e}")
+        else:
+            print(f"Background music not found: {background_music_path}")
     
     def handle_level_reward_input(self, event):
         """Handle input in level reward state"""
@@ -1781,7 +1878,13 @@ class PhotoSlideshowGame:
                 self.showing_reward = False
                 if self.current_question_index >= len(self.level_questions):
                     # Level completed
-                    self.current_state = "map_image"
+                    self.completed_levels.add(self.current_level_number)
+                    if self.correct_answers == self.total_questions:
+                        # Perfect score - show stars
+                        self.show_reward('stars')
+                    else:
+                        # Level completed but not perfect
+                        self.current_state = "map_image"
                 else:
                     # Continue to next question
                     self.current_state = "level_question"
@@ -1792,7 +1895,13 @@ class PhotoSlideshowGame:
                 self.showing_reward = False
                 if self.current_question_index >= len(self.level_questions):
                     # Level completed
-                    self.current_state = "map_image"
+                    self.completed_levels.add(self.current_level_number)
+                    if self.correct_answers == self.total_questions:
+                        # Perfect score - show stars
+                        self.show_reward('stars')
+                    else:
+                        # Level completed but not perfect
+                        self.current_state = "map_image"
                 else:
                     # Continue to next question
                     self.current_state = "level_question"
@@ -1825,8 +1934,19 @@ class PhotoSlideshowGame:
             title_rect = title.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
             self.screen.blit(title, title_rect)
         
+        # Draw text input box if active
+        if self.text_input_active:
+            self.draw_text_input_box()
+        
         # Instructions for navigation - moved to footer
-        if (self.current_question_index < len(self.level_questions) and 
+        if self.text_input_active:
+            # Show instructions for text input
+            instruction_text = "Enter your answer and press ENTER, ESC to close"
+        elif (self.current_question_index < len(self.level_questions) and 
+            self.level_questions[self.current_question_index].get('needs_text_input', False)):
+            # Problem solving question - click or press space to open input
+            instruction_text = "Press SPACE or click to input answer, ESC to go back"
+        elif (self.current_question_index < len(self.level_questions) and 
             self.level_questions[self.current_question_index].get('is_scenario', False)):
             # Scenario image - click to proceed
             instruction_text = "Click or press SPACE to continue, ESC to go back"
@@ -1837,6 +1957,43 @@ class PhotoSlideshowGame:
         instruction = self.font_medium.render(instruction_text, True, WHITE)
         instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
         self.screen.blit(instruction, instruction_rect)
+    
+    def draw_text_input_box(self):
+        """Draw the text input box for problem solving questions"""
+        # Position the text input box in the center
+        input_x = (self.screen_width - self.text_input_rect.width) // 2
+        input_y = self.screen_height // 2 + 100
+        
+        # Draw semi-transparent background overlay
+        overlay = pygame.Surface((self.screen_width, self.screen_height))
+        overlay.set_alpha(128)
+        overlay.fill(BLACK)
+        self.screen.blit(overlay, (0, 0))
+        
+        # Draw the input box
+        input_rect = pygame.Rect(input_x, input_y, self.text_input_rect.width, self.text_input_rect.height)
+        pygame.draw.rect(self.screen, WHITE, input_rect, 3)
+        pygame.draw.rect(self.screen, BLACK, input_rect)
+        
+        # Draw the text value
+        if self.text_input_value:
+            text_surface = self.font_medium.render(self.text_input_value, True, WHITE)
+            text_rect = text_surface.get_rect(center=(input_x + self.text_input_rect.width // 2, input_y + self.text_input_rect.height // 2))
+            self.screen.blit(text_surface, text_rect)
+        
+        # Draw blinking cursor
+        self.text_input_cursor_blink += 1
+        if self.text_input_cursor_blink % 60 < 30:  # Blink every 30 frames
+            cursor_x = input_x + 10 + self.font_medium.size(self.text_input_value)[0]
+            cursor_y = input_y + 10
+            cursor_height = self.text_input_rect.height - 20
+            pygame.draw.line(self.screen, WHITE, (cursor_x, cursor_y), (cursor_x, cursor_y + cursor_height), 2)
+        
+        # Draw title text
+        title_text = "Enter your answer:"
+        title_surface = self.font_medium.render(title_text, True, WHITE)
+        title_rect = title_surface.get_rect(center=(input_x + self.text_input_rect.width // 2, input_y - 30))
+        self.screen.blit(title_surface, title_rect)
     
     def draw_level_reward(self):
         """Draw the level reward screen"""
@@ -1942,6 +2099,8 @@ class PhotoSlideshowGame:
                     running = self.handle_menu_input(event)
                 elif self.current_state == "slideshow":
                     running = self.handle_slideshow_input(event)
+                elif self.current_state == "intro_new_game":
+                    running = self.handle_intro_new_game_input(event)
             
             # Draw current state
             if self.current_state == "splash":
@@ -1968,11 +2127,8 @@ class PhotoSlideshowGame:
                 self.draw_menu()
             elif self.current_state == "slideshow":
                 self.draw_slideshow()
-            
-            # Debug: Show current state on screen
-            state_text = f"Current State: {self.current_state}"
-            state_surface = self.font_small.render(state_text, True, (255, 255, 0))  # Yellow text
-            self.screen.blit(state_surface, (10, 10))
+            elif self.current_state == "intro_new_game":
+                self.draw_intro_new_game()
             
             pygame.display.flip()
             self.clock.tick(FPS)
@@ -2002,6 +2158,61 @@ class PhotoSlideshowGame:
         self.drawing_surface = None
         
         print(f"Window resized to: {width}x{height} (laptop optimized)")
+    
+    def start_new_game(self):
+        """Start new game with intro sequence showing 5.png and playing intro audio"""
+        self.current_state = "intro_new_game"
+        
+        # Load intro image (5.png)
+        intro_path = resource_path("assets/photos/intro/5.png")
+        if os.path.exists(intro_path):
+            try:
+                intro_image = pygame.image.load(intro_path)
+                self.intro_image = self.scale_photo_to_fit(intro_image)
+                print(f"Loaded intro image: {intro_path}")
+            except pygame.error as e:
+                print(f"Error loading intro image: {e}")
+                self.intro_image = None
+        else:
+            print(f"Intro image not found at {intro_path}")
+            self.intro_image = None
+        
+        # Play intro audio (intro (1).mp3)
+        audio_path = resource_path("assets/audio/VOICE OVER/intro (1) .mp3")
+        if os.path.exists(audio_path):
+            try:
+                pygame.mixer.music.load(audio_path)
+                pygame.mixer.music.play()
+                print(f"Playing intro audio: {audio_path}")
+            except Exception as e:
+                print(f"Error playing intro audio: {e}")
+        else:
+            print(f"Intro audio not found: {audio_path}")
+    
+    def draw_intro_new_game(self):
+        """Draw the new game intro screen"""
+        self.screen.fill(BLACK)
+        
+        if self.intro_image:
+            intro_rect = self.intro_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+            self.screen.blit(self.intro_image, intro_rect)
+        
+        instruction_text = "Press any key or click to start Level 1"
+        instruction = self.font_medium.render(instruction_text, True, WHITE)
+        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
+        self.screen.blit(instruction, instruction_rect)
+    
+    def handle_intro_new_game_input(self, event):
+        """Handle input in intro new game state"""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_F11:
+                self.toggle_fullscreen()
+            else:
+                self.start_level(1)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:
+                self.start_level(1)
+        return True
 
 if __name__ == "__main__":
     game = PhotoSlideshowGame()
