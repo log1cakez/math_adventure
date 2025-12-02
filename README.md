@@ -156,6 +156,24 @@ You can easily modify the game by:
 
 ## 🐛 Troubleshooting
 
+### **Installation Errors:**
+
+**"Failed to build 'pygame' when getting requirements to build wheel" (Windows):**
+- This happens when pygame tries to build from source
+- **Quick fix:** `python -m pip install --upgrade setuptools wheel` then `python -m pip install --only-binary :all: pygame`
+- **Full fix:** Install [Microsoft Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+- See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed solutions
+
+**"Python is not recognized":**
+- Make sure Python is installed and added to PATH
+- Try `python3` instead of `python` on Linux/Mac
+
+**"ModuleNotFoundError":**
+- Run: `python -m pip install -r requirements.txt`
+- Or use the setup scripts: `install_requirements.bat` (Windows) or `./install_requirements.sh` (Linux/Mac)
+
+### **Runtime Errors:**
+
 ### **Video not playing:**
 - Install MoviePy: `pip install moviepy`
 - Check if video file exists in correct path
@@ -170,6 +188,10 @@ You can easily modify the game by:
 - Check file paths in `assets/photos/` directory
 - Verify image formats are supported
 - Ensure files are not corrupted
+
+### **Need More Help?**
+- See [INSTALL.md](INSTALL.md) for detailed installation guide
+- See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for comprehensive troubleshooting
 
 ## 🎉 Enjoy Your Adventure!
 
