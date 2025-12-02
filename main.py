@@ -20,7 +20,7 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 try:
     import moviepy
-    from moviepy.editor import VideoFileClip
+    from moviepy import VideoFileClip
     MOVIEPY_AVAILABLE = True
     print("MoviePy loaded successfully")
 except ImportError as e:
@@ -1173,8 +1173,8 @@ class PhotoSlideshowGame:
         # Format: [first_number, second_number, result]
         exercise_answer_keys = {
             1: ['5', '3', '8'],
-            2: ['12', '5', '17'],
-            3: ['20', '10', '30'],
+            2: ['20', '10', '30'],
+            3: ['12', '5', '17'],
             4: ['32', '7', '39'],
             5: ['45', '4', '49'],
             6: ['51', '8', '59'],
@@ -1837,7 +1837,9 @@ class PhotoSlideshowGame:
                 if self.map_video_clip.audio is not None:
                     # Create a temporary audio file and play it
                     temp_audio_path = "temp_map_audio.wav"
-                    self.map_video_clip.audio.write_audiofile(temp_audio_path, verbose=False, logger=None)
+                    # MoviePy 2.x no longer supports the 'verbose' argument on write_audiofile
+                    # Use default logging behavior instead
+                    self.map_video_clip.audio.write_audiofile(temp_audio_path, logger=None)
                     
                     # Play the audio with pygame
                     pygame.mixer.music.load(temp_audio_path)
@@ -1884,7 +1886,8 @@ class PhotoSlideshowGame:
                 # Play audio if available
                 if self.splash_video_clip.audio is not None:
                     temp_audio_path = "temp_splash_audio.wav"
-                    self.splash_video_clip.audio.write_audiofile(temp_audio_path, verbose=False, logger=None)
+                    # MoviePy 2.x no longer supports the 'verbose' argument on write_audiofile
+                    self.splash_video_clip.audio.write_audiofile(temp_audio_path, logger=None)
                     pygame.mixer.music.load(temp_audio_path)
                     pygame.mixer.music.play()
                     print("Playing splash video with audio")
