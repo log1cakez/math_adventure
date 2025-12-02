@@ -155,30 +155,10 @@ class PhotoSlideshowGame:
         self.play_background_music()
         
     def load_levels(self) -> List[Dict]:
-        """Load level information from directories"""
-        levels = []
-        base_path = "photos"
-        
-        # Create photos directory if it doesn't exist
-        if not os.path.exists(base_path):
-            os.makedirs(base_path)
-            
-        # Create sample level directories and placeholder images
-        for i in range(1, 6):  # Create 5 levels
-            level_path = os.path.join(base_path, f"level_{i}")
-            if not os.path.exists(level_path):
-                os.makedirs(level_path)
-                # Create a placeholder text file for each level
-                with open(os.path.join(level_path, "info.txt"), "w") as f:
-                    f.write(f"Level {i} - Add your photos here!\nSupported formats: .jpg, .jpeg, .png, .bmp")
-            
-            levels.append({
-                "name": f"Level {i}",
-                "path": level_path,
-                "photos": self.get_photos_from_directory(level_path)
-            })
-            
-        return levels
+        """Load level information from directories - legacy function, no longer creates directories"""
+        # This function is kept for backwards compatibility but no longer creates directories
+        # The game now uses the structured level system in assets/photos/LEVEL X.Y/
+        return []
     
     def load_splash_video(self) -> Optional[str]:
         """Load the splash screen video"""
@@ -477,6 +457,37 @@ class PhotoSlideshowGame:
         
         return placeholder
     
+    def draw_footer_instruction(self, instruction_text: str, content_rect: pygame.Rect = None):
+        """Draw instruction text with a semi-transparent footer overlay over the slide/image/video"""
+        # If content_rect is provided, position footer at bottom of content; otherwise use screen bottom
+        if content_rect:
+            # Position footer at bottom of the image/video content
+            footer_height = 60
+            footer_width = content_rect.width
+            footer_x = content_rect.x
+            footer_y = content_rect.y + content_rect.height - footer_height
+            
+            # Ensure footer doesn't go outside content bounds
+            if footer_y < content_rect.y:
+                footer_y = content_rect.y
+                footer_height = content_rect.height
+        else:
+            # Fallback to screen bottom
+            footer_height = 60
+            footer_width = self.screen_width
+            footer_x = 0
+            footer_y = self.screen_height - footer_height
+        
+        # Create semi-transparent overlay
+        footer_overlay = pygame.Surface((footer_width, footer_height), pygame.SRCALPHA)
+        footer_overlay.fill((0, 0, 0, 180))  # Semi-transparent black background
+        self.screen.blit(footer_overlay, (footer_x, footer_y))
+        
+        # Render and draw instruction text
+        instruction = self.font_medium.render(instruction_text, True, WHITE)
+        instruction_rect = instruction.get_rect(center=(footer_x + footer_width // 2, footer_y + footer_height // 2))
+        self.screen.blit(instruction, instruction_rect)
+    
     def draw_splash(self):
         """Draw the splash screen with video"""
         self.screen.fill(BLACK)
@@ -512,6 +523,11 @@ class PhotoSlideshowGame:
                     gear_y = frame_rect.y + frame_rect.height * 0.1
                     gear_size = 60
                     self.gear_area = pygame.Rect(gear_x, gear_y, gear_size, gear_size)
+                    
+                    # Instructions to proceed - on the video frame
+                    instruction_text = "Click anywhere to continue, or click gear for mechanics..."
+                    self.draw_footer_instruction(instruction_text, frame_rect)
+                    return  # Return early to avoid drawing instructions twice
                 except Exception as e:
                     print(f"Error displaying splash video frame: {e}")
                     # Fallback
@@ -535,11 +551,9 @@ class PhotoSlideshowGame:
             title_rect = title.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 50))
             self.screen.blit(title, title_rect)
         
-        # Instructions to proceed - moved to footer
+        # Instructions to proceed - moved to footer (fallback)
         instruction_text = "Click anywhere to continue, or click gear for mechanics..."
-        instruction = self.font_medium.render(instruction_text, True, WHITE)
-        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
-        self.screen.blit(instruction, instruction_rect)
+        self.draw_footer_instruction(instruction_text)
     
     def draw_second_page(self):
         """Draw the second page with video"""
@@ -549,6 +563,9 @@ class PhotoSlideshowGame:
         if not self.second_page_video_playing and self.second_page_video:
             self.start_second_page_video()
         
+        # Track current content rect for instruction overlay
+        current_content_rect = None
+        
         # Display current video frame or last frame if finished
         if self.second_page_video_clip:
             if self.second_page_video_finished and self.second_page_last_frame:
@@ -556,6 +573,7 @@ class PhotoSlideshowGame:
                 scaled_frame = self.scale_photo_to_fit(self.second_page_last_frame)
                 frame_rect = scaled_frame.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                 self.screen.blit(scaled_frame, frame_rect)
+                current_content_rect = frame_rect
                 
                 # Set up clickable top right area for mechanics
                 self.top_right_area = pygame.Rect(frame_rect.x + frame_rect.width * 0.9, frame_rect.y, frame_rect.width * 0.1, frame_rect.height * 0.2)
@@ -581,6 +599,7 @@ class PhotoSlideshowGame:
                         scaled_frame = self.scale_photo_to_fit(frame_surface)
                         frame_rect = scaled_frame.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                         self.screen.blit(scaled_frame, frame_rect)
+                        current_content_rect = frame_rect
                         
                         # Set up clickable top right area for mechanics (10% width, 20% height)
                         self.top_right_area = pygame.Rect(frame_rect.x + frame_rect.width * 0.9, frame_rect.y, frame_rect.width * 0.1, frame_rect.height * 0.2)
@@ -624,6 +643,7 @@ class PhotoSlideshowGame:
                         scaled_frame = self.scale_photo_to_fit(self.second_page_last_frame)
                         frame_rect = scaled_frame.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                         self.screen.blit(scaled_frame, frame_rect)
+                        current_content_rect = frame_rect
                         self.top_right_area = pygame.Rect(frame_rect.x + frame_rect.width * 0.9, frame_rect.y, frame_rect.width * 0.1, frame_rect.height * 0.2)
         else:
             # Fallback if video not available
@@ -632,20 +652,20 @@ class PhotoSlideshowGame:
             self.screen.blit(title, title_rect)
             self.top_right_area = None
         
-        # Instructions for the three options - moved to footer
+        # Instructions for the three options - on the video/image
         instruction_text = "Press 1 for Map, 2 for New Game, 3 for Exercises, click top right for mechanics"
-        instruction = self.font_medium.render(instruction_text, True, WHITE)
-        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
-        self.screen.blit(instruction, instruction_rect)
+        self.draw_footer_instruction(instruction_text, current_content_rect)
     
     def draw_select(self):
         """Draw the select screen"""
         self.screen.fill(BLACK)
         
+        content_rect = None
         if self.select_image:
             # Display the select image centered
             select_rect = self.select_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
             self.screen.blit(self.select_image, select_rect)
+            content_rect = select_rect
             
             # Set up clickable top right area for mechanics (10% width, 20% height)
             self.top_right_area = pygame.Rect(select_rect.x + select_rect.width * 0.9, select_rect.y, select_rect.width * 0.1, select_rect.height * 0.2)
@@ -656,17 +676,16 @@ class PhotoSlideshowGame:
             self.screen.blit(title, title_rect)
             self.top_right_area = None
         
-        # Instructions for level selection - moved to footer
+        # Instructions for level selection - on the image
         instruction_text = "Press 1-10 to select a level, ESC to go back, click top right for mechanics"
-        instruction = self.font_medium.render(instruction_text, True, WHITE)
-        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
-        self.screen.blit(instruction, instruction_rect)
+        self.draw_footer_instruction(instruction_text, content_rect)
     
     def draw_exercise_level(self):
         """Draw the exercise level screen"""
         self.screen.fill(BLACK)
         
         # Display the current exercise level image
+        content_rect = None
         if (self.current_exercise_level > 0 and 
             self.current_exercise_level <= len(self.exercise_level_images) and 
             self.exercise_level_images[self.current_exercise_level - 1]):
@@ -674,6 +693,7 @@ class PhotoSlideshowGame:
             level_image = self.exercise_level_images[self.current_exercise_level - 1]
             level_rect = level_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
             self.screen.blit(level_image, level_rect)
+            content_rect = level_rect
             
             # Set up clickable top right area for mechanics (10% width, 20% height)
             self.top_right_area = pygame.Rect(level_rect.x + level_rect.width * 0.9, level_rect.y, level_rect.width * 0.1, level_rect.height * 0.2)
@@ -684,33 +704,49 @@ class PhotoSlideshowGame:
             self.screen.blit(title, title_rect)
             self.top_right_area = None
         
-        # Draw exercise input boxes
-        self.draw_exercise_inputs()
+        # Draw exercise input boxes (pass content_rect to position relative to footer)
+        self.draw_exercise_inputs(content_rect)
         
-        # Instructions for navigation - moved to footer
+        # Instructions for navigation - on the image
         instruction_text = "Click inputs to type, TAB to switch, ENTER to submit, ESC to go back"
-        instruction = self.font_medium.render(instruction_text, True, WHITE)
-        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
-        self.screen.blit(instruction, instruction_rect)
+        self.draw_footer_instruction(instruction_text, content_rect)
     
-    def draw_exercise_inputs(self):
-        """Draw the 3 text input boxes for exercises"""
-        # Input box dimensions
-        input_width = 200
+    def get_exercise_input_position(self, content_rect: pygame.Rect = None):
+        """Calculate the position for exercise input boxes based on footer location"""
+        input_width = 300
         input_height = 50
         input_spacing = 20
         total_width = (input_width * 3) + (input_spacing * 2)
+        footer_height = 60
+        spacing_above_footer = 0  # No gap - inputs positioned directly above footer
+        label_height = 30  # Space for labels above inputs
         
-        # Starting position (centered horizontally, positioned near bottom)
+        # Determine where footer will be positioned
+        if content_rect:
+            # Footer is on the image - position inputs above the footer on the image
+            footer_y = content_rect.y + content_rect.height - footer_height
+            # Position inputs above the footer (accounting for labels and spacing)
+            start_y = footer_y - spacing_above_footer - input_height - label_height
+        else:
+            # Footer is at screen bottom - position inputs above screen bottom
+            start_y = self.screen_height - footer_height - spacing_above_footer - input_height - label_height
+        
+        # Starting position (centered horizontally)
         start_x = (self.screen_width - total_width) // 2
-        start_y = self.screen_height - 150
+        return start_x, start_y, input_width, input_height, input_spacing
+    
+    def draw_exercise_inputs(self, content_rect: pygame.Rect = None):
+        """Draw the 3 text input boxes for exercises"""
+        # Get input position based on footer location
+        start_x, start_y, input_width, input_height, input_spacing = self.get_exercise_input_position(content_rect)
         
         # Draw semi-transparent background overlay for inputs area
-        overlay_height = input_height + 40
+        overlay_padding = 45  # Padding above and below inputs for the overlay
+        overlay_height = input_height + (overlay_padding * 2)  # Total overlay height
         overlay = pygame.Surface((self.screen_width, overlay_height))
         overlay.set_alpha(180)
         overlay.fill(BLACK)
-        self.screen.blit(overlay, (0, start_y - 20))
+        self.screen.blit(overlay, (0, start_y - overlay_padding))
         
         # Draw labels
         label_y = start_y - 25
@@ -818,14 +854,15 @@ class PhotoSlideshowGame:
             map_to_display = self.map_image
             self.last_completed_main_level = 0  # Reset if using base map
         
+        content_rect = None
         if map_to_display is not None:
             # Scale the map image to fit the screen while maintaining aspect ratio
             scaled_map = self.scale_photo_to_fit(map_to_display)
             map_rect = scaled_map.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
             self.screen.blit(scaled_map, map_rect)
+            content_rect = map_rect
             
             # Set up top right area for mechanics access
-            map_rect = scaled_map.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
             self.top_right_area = pygame.Rect(map_rect.x + map_rect.width * 0.9, map_rect.y, map_rect.width * 0.1, map_rect.height * 0.2)
         else:
             # Fallback if map image not found
@@ -837,7 +874,7 @@ class PhotoSlideshowGame:
         # Draw progress bar
         self.draw_progress_bar()
         
-        # Dynamic instructions based on progress and state
+        # Dynamic instructions based on progress and state - on the map image
         completed_count = len(self.completed_levels)
         total_sublevels = self.total_levels * self.sublevels_per_level
         if completed_count == 0:
@@ -847,18 +884,7 @@ class PhotoSlideshowGame:
         else:
             instruction_text = "All sublevels completed! Press 1-0 to replay, ESC to go back, click top right for mechanics"
         
-        instruction = self.font_medium.render(instruction_text, True, WHITE)
-        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
-        
-        # Add subtle background behind instructions for better readability
-        bg_padding = 8
-        inst_bg_rect = pygame.Rect(instruction_rect.x - bg_padding, instruction_rect.y - bg_padding, 
-                                  instruction_rect.width + 2 * bg_padding, instruction_rect.height + 2 * bg_padding)
-        inst_bg_surface = pygame.Surface((inst_bg_rect.width, inst_bg_rect.height), pygame.SRCALPHA)
-        inst_bg_surface.fill((0, 0, 0, 120))  # Semi-transparent black background
-        self.screen.blit(inst_bg_surface, (inst_bg_rect.x, inst_bg_rect.y))
-        
-        self.screen.blit(instruction, instruction_rect)
+        self.draw_footer_instruction(instruction_text, content_rect)
     
     def draw_progress_bar(self):
         """Draw a progress bar showing completed levels"""
@@ -917,11 +943,13 @@ class PhotoSlideshowGame:
         """Draw the mechanics screen"""
         self.screen.fill(BLACK)
         
+        content_rect = None
         if self.mechanics_images and len(self.mechanics_images) > 0:
             # Display the current mechanics image centered
             current_mechanics = self.mechanics_images[self.current_mechanics_index]
             mechanics_rect = current_mechanics.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
             self.screen.blit(current_mechanics, mechanics_rect)
+            content_rect = mechanics_rect
             
             # Show page counter if there are multiple images
             if len(self.mechanics_images) > 1:
@@ -930,11 +958,9 @@ class PhotoSlideshowGame:
                 page_rect = page_surface.get_rect(center=(self.screen_width // 2, self.screen_height - 50))
                 self.screen.blit(page_surface, page_rect)
         
-        # Instructions for navigation - moved to footer
+        # Instructions for navigation - on the mechanics image
         instruction_text = "Use LEFT/RIGHT arrows to navigate, ESC to go back"
-        instruction = self.font_medium.render(instruction_text, True, WHITE)
-        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
-        self.screen.blit(instruction, instruction_rect)
+        self.draw_footer_instruction(instruction_text, content_rect)
     
     def draw_menu(self):
         """Draw the menu screen"""
@@ -969,9 +995,7 @@ class PhotoSlideshowGame:
         
         # Instructions for navigation - moved to footer
         instruction_text = "Use LEFT/RIGHT arrows to navigate, ESC to go back"
-        instruction = self.font_medium.render(instruction_text, True, WHITE)
-        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
-        self.screen.blit(instruction, instruction_rect)
+        self.draw_footer_instruction(instruction_text)
     
     def handle_splash_input(self, event):
         """Handle input in splash state"""
@@ -1138,12 +1162,16 @@ class PhotoSlideshowGame:
                     self.current_state = "mechanics"
                 else:
                     # Check if clicked on any input box to select it
-                    input_width = 200
-                    input_height = 50
-                    input_spacing = 20
-                    total_width = (input_width * 3) + (input_spacing * 2)
-                    start_x = (self.screen_width - total_width) // 2
-                    start_y = self.screen_height - 150
+                    # Calculate content_rect same way as in draw_exercise_level
+                    content_rect = None
+                    if (self.current_exercise_level > 0 and 
+                        self.current_exercise_level <= len(self.exercise_level_images) and 
+                        self.exercise_level_images[self.current_exercise_level - 1]):
+                        level_image = self.exercise_level_images[self.current_exercise_level - 1]
+                        content_rect = level_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                    
+                    # Get input position using same calculation as draw_exercise_inputs
+                    start_x, start_y, input_width, input_height, input_spacing = self.get_exercise_input_position(content_rect)
                     
                     for i in range(3):
                         input_x = start_x + i * (input_width + input_spacing)
@@ -2411,11 +2439,13 @@ class PhotoSlideshowGame:
                     print(f"Error loading question image: {e}")
                     question_data['image'] = None
             
+            content_rect = None
             if question_data['image']:
                 # Scale and display question image
                 scaled_question = self.scale_photo_to_fit(question_data['image'])
                 question_rect = scaled_question.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                 self.screen.blit(scaled_question, question_rect)
+                content_rect = question_rect
         else:
             # No more questions
             title = self.font_large.render("Level Complete!", True, WHITE)
@@ -2426,7 +2456,7 @@ class PhotoSlideshowGame:
         if self.text_input_active:
             self.draw_text_input_box()
         
-        # Instructions for navigation - moved to footer
+        # Instructions for navigation - on the image
         if self.text_input_active:
             # Show instructions for text input
             instruction_text = "Enter your answer and press ENTER, ESC to close"
@@ -2442,9 +2472,7 @@ class PhotoSlideshowGame:
             # Regular question - answer with 1-4
             instruction_text = "Press 1-4 to answer, ESC to go back"
         
-        instruction = self.font_medium.render(instruction_text, True, WHITE)
-        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
-        self.screen.blit(instruction, instruction_rect)
+        self.draw_footer_instruction(instruction_text, content_rect)
     
     def draw_text_input_box(self):
         """Draw the text input box for problem solving questions"""
@@ -2489,12 +2517,13 @@ class PhotoSlideshowGame:
         
         # Load and display reward gif
         reward_path = None
+        content_rect = None
         if self.reward_type == 'correct':
-            reward_path = "videos/REWARD/CORRECT.gif"
+            reward_path = resource_path("videos/REWARD/CORRECT.gif")
         elif self.reward_type == 'wrong':
-            reward_path = "videos/REWARD/WRONG.gif"
+            reward_path = resource_path("videos/REWARD/WRONG.gif")
         elif self.reward_type == 'stars':
-            reward_path = "videos/REWARD/stars.gif"
+            reward_path = resource_path("videos/REWARD/stars.gif")
         
         if reward_path and os.path.exists(reward_path):
             try:
@@ -2521,6 +2550,7 @@ class PhotoSlideshowGame:
                 # Center the image on screen
                 reward_rect = scaled_reward.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                 self.screen.blit(scaled_reward, reward_rect)
+                content_rect = reward_rect
                 
                 print(f"Successfully loaded reward GIF: {reward_path}")
             except Exception as e:
@@ -2533,6 +2563,7 @@ class PhotoSlideshowGame:
                 reward_surface = self.font_large.render(reward_text, True, WHITE)
                 reward_rect = reward_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                 self.screen.blit(reward_surface, reward_rect)
+                content_rect = None
         else:
             # Fallback text if GIF not found
             reward_text = self.reward_type.upper()
@@ -2542,15 +2573,14 @@ class PhotoSlideshowGame:
             reward_surface = self.font_large.render(reward_text, True, WHITE)
             reward_rect = reward_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
             self.screen.blit(reward_surface, reward_rect)
+            content_rect = None
             
             if reward_path:
                 print(f"Reward GIF not found: {reward_path}")
         
-        # Instructions for navigation - moved to footer
+        # Instructions for navigation - on the reward image
         instruction_text = "Press SPACE or click to continue"
-        instruction = self.font_medium.render(instruction_text, True, WHITE)
-        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
-        self.screen.blit(instruction, instruction_rect)
+        self.draw_footer_instruction(instruction_text, content_rect)
     
     def draw_mission_complete(self):
         """Draw the mission complete screen"""
@@ -2582,6 +2612,7 @@ class PhotoSlideshowGame:
                 scaled_image = self.scale_photo_to_fit(mission_image)
                 image_rect = scaled_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                 self.screen.blit(scaled_image, image_rect)
+                content_rect = image_rect
                 
                 print(f"Successfully loaded mission complete image: {image_path}")
             except Exception as e:
@@ -2599,6 +2630,7 @@ class PhotoSlideshowGame:
                 text_surface = self.font_large.render(fallback_text, True, WHITE)
                 text_rect = text_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                 self.screen.blit(text_surface, text_rect)
+                content_rect = None
         else:
             # Fallback text if image not found
             fallback_text = "Mission Complete!"
@@ -2608,12 +2640,11 @@ class PhotoSlideshowGame:
             text_surface = self.font_large.render(fallback_text, True, WHITE)
             text_rect = text_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
             self.screen.blit(text_surface, text_rect)
+            content_rect = None
         
-        # Instructions for navigation
+        # Instructions for navigation - on the mission complete image
         instruction_text = "Press SPACE or click to continue"
-        instruction = self.font_medium.render(instruction_text, True, WHITE)
-        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
-        self.screen.blit(instruction, instruction_rect)
+        self.draw_footer_instruction(instruction_text, content_rect)
     
     def handle_mission_complete_input(self, event):
         """Handle input in mission complete state"""
@@ -2702,9 +2733,7 @@ class PhotoSlideshowGame:
         
         # Instructions
         instruction_text = "Press 1-3 to select sublevel, ESC to go back"
-        instruction = self.font_medium.render(instruction_text, True, WHITE)
-        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 50))
-        self.screen.blit(instruction, instruction_rect)
+        self.draw_footer_instruction(instruction_text)
     
     def handle_sublevel_selection_input(self, event):
         """Handle input in sublevel selection state"""
@@ -2869,14 +2898,14 @@ class PhotoSlideshowGame:
         """Draw the new game intro screen"""
         self.screen.fill(BLACK)
         
+        content_rect = None
         if self.intro_image:
             intro_rect = self.intro_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
             self.screen.blit(self.intro_image, intro_rect)
+            content_rect = intro_rect
         
         instruction_text = "Press any key or click to start Level 1"
-        instruction = self.font_medium.render(instruction_text, True, WHITE)
-        instruction_rect = instruction.get_rect(center=(self.screen_width // 2, self.screen_height - 20))
-        self.screen.blit(instruction, instruction_rect)
+        self.draw_footer_instruction(instruction_text, content_rect)
     
     def handle_intro_new_game_input(self, event):
         """Handle input in intro new game state"""

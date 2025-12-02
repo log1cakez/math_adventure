@@ -196,6 +196,38 @@ You can easily modify the game by:
 - **Modifying controls**: Update input handlers
 - **Changing colors/fonts**: Edit the drawing methods
 
+## 📦 Windows Deployment
+
+### Build Standalone Executable
+
+Create a Windows .exe file with all assets included:
+
+**Quick Build (Recommended):**
+```bash
+build_windows.bat
+```
+
+**Manual Build:**
+```bash
+pip install pyinstaller
+pyinstaller math_adventure.spec
+```
+
+The executable will be in `dist/MathAdventure.exe` - a single file with all sounds, images, and videos bundled!
+
+**What's Included:**
+- ✅ All assets (images, audio, videos)
+- ✅ Python interpreter
+- ✅ All dependencies (pygame, moviepy, numpy)
+- ✅ No additional files needed
+
+**Distribution:**
+- Copy `MathAdventure.exe` to any Windows computer
+- Run without installing Python
+- All assets are embedded in the executable
+
+For detailed deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md)
+
 ## 🐛 Troubleshooting
 
 ### **Installation Errors:**
