@@ -1,17 +1,9 @@
 @echo off
-echo Installing required packages for Math Adventure Game...
+echo ========================================
+echo Math Adventure Game - Setup Script
+echo ========================================
 echo.
 
-<<<<<<< Updated upstream
-echo Installing pygame...
-pip install pygame
-
-echo.
-echo Installing moviepy for video playback...
-pip install moviepy
-
-echo.
-=======
 REM Check if Python is installed
 python --version >nul 2>&1
 if errorlevel 1 (
@@ -75,7 +67,14 @@ if errorlevel 1 (
 
 echo.
 echo ========================================
->>>>>>> Stashed changes
 echo Installation complete!
-echo You can now run the game with: python main.py
+echo ========================================
+echo.
+echo You can now run the game with:
+echo   python main.py
+echo.
+echo NOTE: For video playback, you may also need FFmpeg:
+echo   Download from: https://ffmpeg.org/download.html
+echo   Add to your system PATH
+echo.
 pause

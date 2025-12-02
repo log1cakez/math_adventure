@@ -15,17 +15,59 @@ An immersive Python game built with Pygame featuring interactive photo slideshow
 
 ## 🚀 Installation
 
+### Quick Setup (Recommended)
+
+**Windows:**
+```bash
+install_requirements.bat
+```
+
+**Linux/Mac:**
+```bash
+chmod +x install_requirements.sh
+./install_requirements.sh
+```
+
+**Or use Python setup script:**
+```bash
+python setup.py
+```
+
+### Manual Installation
+
 1. **Install Python 3.7 or higher**
+   - Download from [python.org](https://www.python.org/downloads/)
+   - Make sure to check "Add Python to PATH" during installation
 
 2. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
+   
+   Or install individually:
+   ```bash
+   pip install pygame moviepy>=2.0.0 numpy
+   ```
 
-3. **Install FFmpeg (for audio conversion):**
+3. **Install FFmpeg (optional, for video/audio conversion):**
    - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH
    - **macOS**: `brew install ffmpeg`
-   - **Linux**: `sudo apt install ffmpeg`
+   - **Linux**: `sudo apt install ffmpeg` or `sudo yum install ffmpeg`
+
+### Troubleshooting Installation
+
+**If you get "Python not found" error:**
+- Make sure Python is installed and added to your system PATH
+- Try using `python3` instead of `python` on Linux/Mac
+
+**If pip install fails:**
+- Upgrade pip first: `python -m pip install --upgrade pip`
+- On Linux/Mac, you may need: `pip3` instead of `pip`
+- On some systems: `python -m pip install` instead of `pip install`
+
+**If MoviePy import fails:**
+- Make sure you installed: `pip install moviepy>=2.0.0`
+- Try: `pip install --upgrade moviepy`
 
 ## 🎯 How to Use
 
