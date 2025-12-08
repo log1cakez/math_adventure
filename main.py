@@ -148,6 +148,11 @@ class PhotoSlideshowGame:
         self.second_page_video_finished = False  # Track if video has finished
         self.second_page_last_frame = None  # Store last frame
         
+        # Video clip for stars reward
+        self.stars_video_clip = None
+        self.stars_video_playing = False
+        self.stars_video_start_time = 0
+        
         # Interactive areas (you can adjust these coordinates based on your image)
         self.gear_area = None  # Will be set based on image dimensions
         
@@ -179,7 +184,7 @@ class PhotoSlideshowGame:
         try:
             if os.path.exists(second_page_path):
                 return second_page_path
-            else:   
+            else:
                 print(f"Second page video not found at {second_page_path}")
                 return None
         except Exception as e:
@@ -504,41 +509,47 @@ class PhotoSlideshowGame:
                 try:
                     frame = self.splash_video_clip.get_frame(current_time)
                     # Convert numpy array to pygame surface
-                    # MoviePy returns frames as (height, width, 3) RGB arrays
                     if NUMPY_AVAILABLE:
-                        # Swap axes: (height, width, 3) -> (width, height, 3) for pygame
+                        # MoviePy gives (H,W,3), pygame needs (W,H,3)
                         frame = np.swapaxes(frame, 0, 1)
                         frame_surface = pygame.surfarray.make_surface(frame)
                     else:
-                        # Fallback: convert frame to pygame surface
-                        frame_surface = pygame.image.frombuffer(frame.tobytes(), (frame.shape[1], frame.shape[0]), "RGB")
+                        frame_surface = pygame.image.frombuffer(
+                            frame.tobytes(),
+                            (frame.shape[1], frame.shape[0]),
+                            "RGB"
+                        )
                     
                     # Scale to fit screen
                     scaled_frame = self.scale_photo_to_fit(frame_surface)
-                    frame_rect = scaled_frame.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                    frame_rect = scaled_frame.get_rect(
+                        center=(self.screen_width // 2, self.screen_height // 2)
+                    )
                     self.screen.blit(scaled_frame, frame_rect)
                     
-                    # Set up clickable gear area (top right)
+                    # Gear clickable area
                     gear_x = frame_rect.x + frame_rect.width * 0.85
                     gear_y = frame_rect.y + frame_rect.height * 0.1
                     gear_size = 60
                     self.gear_area = pygame.Rect(gear_x, gear_y, gear_size, gear_size)
                     
-                    # Instructions to proceed - on the video frame
+                    # Instructions
                     instruction_text = "Click anywhere to continue, or click gear for mechanics..."
                     self.draw_footer_instruction(instruction_text, frame_rect)
-                    return  # Return early to avoid drawing instructions twice
+                    return  # Avoid drawing twice
                 except Exception as e:
                     print(f"Error displaying splash video frame: {e}")
-                    # Fallback
+                    # Fallback frame
                     title = self.font_large.render("Photo Slideshow Game", True, WHITE)
-                    title_rect = title.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 50))
+                    title_rect = title.get_rect(
+                        center=(self.screen_width // 2, self.screen_height // 2 - 50)
+                    )
                     self.screen.blit(title, title_rect)
             else:
-                # Video finished - automatically transition to second page
+                # Video finished
                 self.splash_video_playing = False
                 self.current_state = "second_page"
-                # Clean up splash video clip
+                # Cleanup
                 if self.splash_video_clip:
                     try:
                         self.splash_video_clip.close()
@@ -546,9 +557,11 @@ class PhotoSlideshowGame:
                         pass
                     self.splash_video_clip = None
         else:
-            # Fallback if video not available
+            # Fallback if no video
             title = self.font_large.render("Photo Slideshow Game", True, WHITE)
-            title_rect = title.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 50))
+            title_rect = title.get_rect(
+                center=(self.screen_width // 2, self.screen_height // 2 - 50)
+            )
             self.screen.blit(title, title_rect)
         
         # Instructions to proceed - moved to footer (fallback)
@@ -602,7 +615,12 @@ class PhotoSlideshowGame:
                         current_content_rect = frame_rect
                         
                         # Set up clickable top right area for mechanics (10% width, 20% height)
-                        self.top_right_area = pygame.Rect(frame_rect.x + frame_rect.width * 0.9, frame_rect.y, frame_rect.width * 0.1, frame_rect.height * 0.2)
+                        self.top_right_area = pygame.Rect(
+                            frame_rect.x + frame_rect.width * 0.9,
+                            frame_rect.y,
+                            frame_rect.width * 0.1,
+                            frame_rect.height * 0.2
+                        )
                     except Exception as e:
                         print(f"Error displaying second page video frame: {e}")
                         # Fallback
@@ -616,35 +634,45 @@ class PhotoSlideshowGame:
                         self.second_page_video_playing = False  # Pause video
                         self.second_page_video_finished = True
                         
-                        # Background music already playing, keep it going
-                        
                         # Capture and store last frame
                         try:
-                            last_frame = self.second_page_video_clip.get_frame(self.second_page_video_clip.duration - 0.1)
+                            last_frame = self.second_page_video_clip.get_frame(
+                                self.second_page_video_clip.duration - 0.1
+                            )
                             # Convert numpy array to pygame surface
                             if NUMPY_AVAILABLE:
                                 last_frame = np.swapaxes(last_frame, 0, 1)
                                 frame_surface = pygame.surfarray.make_surface(last_frame)
                             else:
-                                frame_surface = pygame.image.frombuffer(last_frame.tobytes(), (last_frame.shape[1], last_frame.shape[0]), "RGB")
+                                frame_surface = pygame.image.frombuffer(
+                                    last_frame.tobytes(),
+                                    (last_frame.shape[1], last_frame.shape[0]),
+                                    "RGB"
+                                )
                             
                             self.second_page_last_frame = frame_surface
                             print("Video finished, showing last frame")
                         except Exception as e:
                             print(f"Error capturing last frame: {e}")
                         
-                        # Background music should already be playing since video start
-                        # Ensure it continues if it stopped
+                        # Ensure background music continues
                         if not pygame.mixer.music.get_busy():
                             self.play_background_music()
                     
                     # Display stored last frame
                     if self.second_page_last_frame:
                         scaled_frame = self.scale_photo_to_fit(self.second_page_last_frame)
-                        frame_rect = scaled_frame.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                        frame_rect = scaled_frame.get_rect(
+                            center=(self.screen_width // 2, self.screen_height // 2)
+                        )
                         self.screen.blit(scaled_frame, frame_rect)
                         current_content_rect = frame_rect
-                        self.top_right_area = pygame.Rect(frame_rect.x + frame_rect.width * 0.9, frame_rect.y, frame_rect.width * 0.1, frame_rect.height * 0.2)
+                        self.top_right_area = pygame.Rect(
+                            frame_rect.x + frame_rect.width * 0.9,
+                            frame_rect.y,
+                            frame_rect.width * 0.1,
+                            frame_rect.height * 0.2
+                        )
         else:
             # Fallback if video not available
             title = self.font_large.render("MAIN MENU", True, WHITE)
@@ -871,8 +899,8 @@ class PhotoSlideshowGame:
             self.screen.blit(title, title_rect)
             self.top_right_area = None
         
-        # Draw progress bar
-        self.draw_progress_bar()
+        # Draw progress bar (on top of map)
+        self.draw_progress_bar(content_rect)
         
         # Dynamic instructions based on progress and state - on the map image
         completed_count = len(self.completed_levels)
@@ -886,18 +914,47 @@ class PhotoSlideshowGame:
         
         self.draw_footer_instruction(instruction_text, content_rect)
     
-    def draw_progress_bar(self):
+    def draw_progress_bar(self, content_rect=None):
         """Draw a progress bar showing completed levels"""
         # Responsive progress bar dimensions
         bar_width = min(self.screen_width * 0.7, 800)  # Max 70% width, capped at 800px
         bar_height = max(15, self.screen_height // 50)  # Minimum 15px, scales with screen
-        bar_x = (self.screen_width - bar_width) // 2
-        bar_y = self.screen_height - 80  # Position at footer (above instructions)
+        
+        # Position relative to map if provided, otherwise use screen center
+        if content_rect is not None:
+            bar_x = content_rect.x + (content_rect.width - bar_width) // 2
+            bar_y = content_rect.y + 60  # Position below top of map
+        else:
+            bar_x = (self.screen_width - bar_width) // 2
+            bar_y = 40  # Fallback position at top area
         
         # Calculate progress (now based on sublevels)
         total_sublevels = self.total_levels * self.sublevels_per_level
         completed_count = len(self.completed_levels)
         progress = completed_count / total_sublevels if total_sublevels > 0 else 0
+        
+        # Draw progress text with dynamic content (above the bar)
+        if completed_count == 0:
+            progress_text = "Start your adventure! Complete sublevels to track progress"
+        elif completed_count < total_sublevels:
+            remaining = total_sublevels - completed_count
+            progress_text = f"Progress: {completed_count}/{total_sublevels} sublevels completed ({remaining} remaining)"
+        else:
+            progress_text = f"🎉 Congratulations! All {total_sublevels} sublevels completed! 🎉"
+        
+        # Render text with subtle background for better readability (above the bar)
+        text_surface = self.font_small.render(progress_text, True, WHITE)
+        text_center_x = content_rect.centerx if content_rect is not None else self.screen_width // 2
+        text_rect = text_surface.get_rect(center=(text_center_x, bar_y - 20))
+        
+        # Add subtle background behind text for better readability
+        bg_padding = 5
+        text_bg_rect = pygame.Rect(text_rect.x - bg_padding, text_rect.y - bg_padding, 
+                                  text_rect.width + 2 * bg_padding, text_rect.height + 2 * bg_padding)
+        text_bg_surface = pygame.Surface((text_bg_rect.width, text_bg_rect.height), pygame.SRCALPHA)
+        text_bg_surface.fill((0, 0, 0, 100))  # Semi-transparent black background
+        self.screen.blit(text_bg_surface, (text_bg_rect.x, text_bg_rect.y))
+        self.screen.blit(text_surface, text_rect)
         
         # Draw semi-transparent background bar (dark gray with alpha)
         background_rect = pygame.Rect(bar_x, bar_y, bar_width, bar_height)
@@ -915,29 +972,6 @@ class PhotoSlideshowGame:
             progress_surface = pygame.Surface((progress_width, bar_height), pygame.SRCALPHA)
             progress_surface.fill((0, 200, 100, 180))  # Green with transparency
             self.screen.blit(progress_surface, (bar_x, bar_y))
-        
-        # Draw progress text with dynamic content
-        if completed_count == 0:
-            progress_text = "Start your adventure! Complete sublevels to track progress"
-        elif completed_count < total_sublevels:
-            remaining = total_sublevels - completed_count
-            progress_text = f"Progress: {completed_count}/{total_sublevels} sublevels completed ({remaining} remaining)"
-        else:
-            progress_text = f"🎉 Congratulations! All {total_sublevels} sublevels completed! 🎉"
-        
-        # Render text with subtle background for better readability
-        text_surface = self.font_small.render(progress_text, True, WHITE)
-        text_rect = text_surface.get_rect(center=(self.screen_width // 2, bar_y + bar_height + 10))
-        
-        # Add subtle background behind text for better readability
-        bg_padding = 5
-        text_bg_rect = pygame.Rect(text_rect.x - bg_padding, text_rect.y - bg_padding, 
-                                  text_rect.width + 2 * bg_padding, text_rect.height + 2 * bg_padding)
-        text_bg_surface = pygame.Surface((text_bg_rect.width, text_bg_rect.height), pygame.SRCALPHA)
-        text_bg_surface.fill((0, 0, 0, 100))  # Semi-transparent black background
-        self.screen.blit(text_bg_surface, (text_bg_rect.x, text_bg_rect.y))
-        
-        self.screen.blit(text_surface, text_rect)
     
     def draw_mechanics(self):
         """Draw the mechanics screen"""
@@ -1952,6 +1986,32 @@ class PhotoSlideshowGame:
         else:
             self.second_page_video_clip = None
     
+    def start_stars_video(self):
+        """Start the stars reward video"""
+        stars_video_path = resource_path("videos/REWARD/REWARD STARS.mp4")
+        
+        self.stars_video_playing = True
+        self.stars_video_start_time = pygame.time.get_ticks()
+        
+        # Load video with MoviePy if available
+        if MOVIEPY_AVAILABLE and os.path.exists(stars_video_path):
+            try:
+                self.stars_video_clip = VideoFileClip(stars_video_path)
+                print(f"Loaded stars video: {stars_video_path}")
+                
+                # Play audio if available
+                if self.stars_video_clip.audio is not None:
+                    temp_audio_path = "temp_stars_audio.wav"
+                    self.stars_video_clip.audio.write_audiofile(temp_audio_path, logger=None)
+                    pygame.mixer.music.load(temp_audio_path)
+                    pygame.mixer.music.play()
+                    print("Playing stars video with audio")
+            except Exception as e:
+                print(f"Error loading stars video: {e}")
+                self.stars_video_clip = None
+        else:
+            self.stars_video_clip = None
+    
     def play_level_audio(self, level_index: int):
         """Play level audio (placeholder)"""
         if self.audio_enabled:
@@ -2011,7 +2071,8 @@ class PhotoSlideshowGame:
         # Define answers for Level 1 sublevels based on file names
         level_1_answers = {
             '1.1': {
-                '23.jpg': {'answer': None, 'is_scenario': True, 'needs_text_input': False},  # Just a photo, no answer needed
+                '22.jpg': {'answer': 'A', 'is_scenario': True, 'needs_text_input': False},
+                '23.jpg': {'answer': 'A', 'is_scenario': True, 'needs_text_input': False},  # Just a photo, no answer needed
                 '24.jpg': {'answer': 'B', 'is_scenario': False, 'needs_text_input': False},
                 '27.jpg': {'answer': 'D', 'is_scenario': False, 'needs_text_input': False},
                 '28.jpg': {'answer': 'A', 'is_scenario': False, 'needs_text_input': False},
@@ -2038,6 +2099,263 @@ class PhotoSlideshowGame:
                 '56.jpg': {'answer': 'C', 'is_scenario': False, 'needs_text_input': False},
             },
         }
+        # Level 2 answers (AGONSA method)
+        level_2_answers = {
+            '2.1': {
+                'a.jpg':   {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'g.jpg':   {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'o.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'n.jpg':   {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                's.jpg':   {'answer': '18', 'is_scenario': False, 'needs_text_input': True},
+                'ans.jpg': {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '2.2': {
+                'a.jpg':   {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'g.jpg':   {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'o.jpg':   {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'n.jpg':   {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                's.jpg':   {'answer': '19', 'is_scenario': False, 'needs_text_input': True},
+                'ans.jpg': {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '2.3': {
+                'a.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'g.jpg':   {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'o.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'n.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                's.jpg':   {'answer': '15', 'is_scenario': False, 'needs_text_input': True},
+                'ans.jpg': {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+            },
+        }
+        # Level 3 answers
+        level_3_answers = {
+            '3.1': {
+                'a.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'g.jpg':   {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'o.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'n.jpg':   {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                's.jpg':   {'answer': '26', 'is_scenario': False, 'needs_text_input': True},
+                'ans.jpg': {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '3.2': {
+                'a.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'g.jpg':   {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'o.jpg':   {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'n.jpg':   {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                's.jpg':   {'answer': '22', 'is_scenario': False, 'needs_text_input': True},
+                'ans.jpg': {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '3.3': {
+                'a.jpg':   {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'g.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'o.jpg':   {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'n.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                's.jpg':   {'answer': '27', 'is_scenario': False, 'needs_text_input': True},
+                'ans.jpg': {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+            },
+        }
+        # Level 4 answers
+        level_4_answers = {
+            '4.1': {
+                'a.jpg':   {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'g.jpg':   {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'o.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'n.jpg':   {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                's.jpg':   {'answer': '32', 'is_scenario': False, 'needs_text_input': True},
+                'ans.jpg': {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '4.2': {
+                'a.jpg':   {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'g.jpg':   {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'o.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'n.jpg':   {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                's.jpg':   {'answer': '38', 'is_scenario': False, 'needs_text_input': True},
+                'ans.jpg': {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '4.3': {
+                'a.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'g.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'o.jpg':   {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'n.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                's.jpg':   {'answer': '32', 'is_scenario': False, 'needs_text_input': True},
+                'ans.jpg': {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+            },
+        }
+        # Level 5 answers
+        level_5_answers = {
+            '5.1': {
+                'a.jpg':   {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'g.jpg':   {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'o.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'n.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                's.jpg':   {'answer': '48', 'is_scenario': False, 'needs_text_input': True},
+                'ans.jpg': {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '5.2': {
+                'a.jpg':   {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'g.jpg':   {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'o.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'n.jpg':   {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                's.jpg':   {'answer': '48', 'is_scenario': False, 'needs_text_input': True},
+                'ans.jpg': {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '5.3': {
+                'a.jpg':   {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'g.jpg':   {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'o.jpg':   {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'n.jpg':   {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                's.jpg':   {'answer': '48', 'is_scenario': False, 'needs_text_input': True},
+                'ans.jpg': {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+            },
+        }
+        # Level 6 answers
+        level_6_answers = {
+            '6.1': {
+                'what is asked_.jpg':             {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'what is given_.jpg':             {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'what operation to be used_.jpg': {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'what is number sentence _.jpg':  {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'solve.jpg':                      {'answer': '60', 'is_scenario': False, 'needs_text_input': True},
+                'what is the answer _.jpg':       {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '6.2': {
+                'what is asked_.jpg':             {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'what is given_.jpg':             {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'what operation to be used_.jpg': {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'what is number sentence _.jpg':  {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'solve.jpg':                      {'answer': '60', 'is_scenario': False, 'needs_text_input': True},
+                'what is the answer _.jpg':       {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '6.3': {
+                'what is asked_.jpg':             {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'what is given_.jpg':             {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'what operation to be used_.jpg': {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'what is number sentence _.jpg':  {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'solve.jpg':                      {'answer': '57', 'is_scenario': False, 'needs_text_input': True},
+                'what is the answer _.jpg':       {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+            },
+        }
+        # Level 7 answers
+        level_7_answers = {
+            '7.1': {
+                'What is asked_.jpg':              {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'What is given_.jpg':              {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'What operation to be used_.jpg':  {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'What is the number sentence_.jpg':{'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'Solve.jpg':                       {'answer': '65', 'is_scenario': False, 'needs_text_input': True},
+                'What is the answer_.jpg':         {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '7.2': {
+                # Note: folder has "What is the asked_.jpg" in some listings; map both variants
+                'What is asked_.jpg':              {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'What is the asked_.jpg':          {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'What is given_.jpg':              {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'What operation to be used_.jpg':  {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'What is the number sentence_.jpg':{'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'solve.jpg':                       {'answer': '66', 'is_scenario': False, 'needs_text_input': True},
+                'What is the answer_.jpg':         {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '7.3': {
+                'What is asked_.jpg':              {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'What is given_.jpg':              {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'What operation to be used_.jpg':  {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'What is the number sentence_.jpg':{'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'solve.jpg':                       {'answer': '66', 'is_scenario': False, 'needs_text_input': True},
+                'What is the answer_.jpg':         {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+            },
+        }
+        # Level 8 answers
+        level_8_answers = {
+            '8.1': {
+                'What is asked_.jpg':              {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'What is given_.jpg':              {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'What operation to be used_.jpg':  {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'What is the number sentence_.jpg':{'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'Solve.jpg':                       {'answer': '75', 'is_scenario': False, 'needs_text_input': True},
+                'What is the answer_.jpg':         {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '8.2': {
+                'What is asked_.jpg':              {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'What is given_.jpg':              {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'What operation to be used_.jpg':  {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'What is the number sentence_.jpg':{'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'solve.jpg':                       {'answer': '80', 'is_scenario': False, 'needs_text_input': True},
+                'What is the answer_.jpg':         {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '8.3': {
+                'What is asked_.jpg':              {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'What is given_.jpg':              {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'What operation to be used_.jpg':  {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'What is the number sentence_.jpg':{'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'solve.jpg':                       {'answer': '76', 'is_scenario': False, 'needs_text_input': True},
+                'What is the answer_.jpg':         {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+            },
+        }
+        # Level 9 answers
+        level_9_answers = {
+            '9.1': {
+                'What is asked_.jpg':              {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'What is given_.jpg':              {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'What operation to be used_.jpg':  {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'What is the number sentence_.jpg':{'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'solve.jpg':                       {'answer': '85', 'is_scenario': False, 'needs_text_input': True},
+                'What is the answer_.jpg':         {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '9.2': {
+                'What is asked_.jpg':              {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'What is given_.jpg':              {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'What operation to be used_.jpg':  {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'What is the number sentence_.jpg':{'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'solve.jpg':                       {'answer': '87', 'is_scenario': False, 'needs_text_input': True},
+                'What is the answer_.jpg':         {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '9.3': {
+                'What is asked_.jpg':              {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'What is given_.jpg':              {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'What operation to be used_.jpg':  {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'What is the number sentence_.jpg':{'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'solve.jpg':                       {'answer': '86', 'is_scenario': False, 'needs_text_input': True},
+                'What is the answer_.jpg':         {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+            },
+        }
+        # Level 10 answers
+        level_10_answers = {
+            '10.1': {
+                'What is asked_.jpg':               {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'What is given_.jpg':               {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'What operation to be used_.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'What is the number sentence_.jpg': {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'solve.jpg':                        {'answer': '98', 'is_scenario': False, 'needs_text_input': True},
+                'What is the answer_.jpg':          {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '10.2': {
+                'What is asked_.jpg':               {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'What is given_.jpg':               {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'What operation to be used_.jpg':   {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'What is the number sentence_.jpg': {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+                'solve.jpg':                        {'answer': '95', 'is_scenario': False, 'needs_text_input': True},
+                'What is the answer_.jpg':          {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+            },
+            '10.3': {
+                'What is asked_.jpg':               {'answer': 'C',  'is_scenario': False, 'needs_text_input': False},
+                'What is given_.jpg':               {'answer': 'D',  'is_scenario': False, 'needs_text_input': False},
+                'What operation to be used_.jpg':   {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'What is the number sentence_.jpg': {'answer': 'B',  'is_scenario': False, 'needs_text_input': False},
+                'solve.jpg':                        {'answer': '92', 'is_scenario': False, 'needs_text_input': True},
+                'What is the answer_.jpg':          {'answer': 'A',  'is_scenario': False, 'needs_text_input': False},
+            },
+        }
+        level_answers = {
+            1: level_1_answers,
+            2: level_2_answers,
+            3: level_3_answers,
+            4: level_4_answers,
+            5: level_5_answers,
+            6: level_6_answers,
+            7: level_7_answers,
+            8: level_8_answers,
+            9: level_9_answers,
+            10: level_10_answers,
+        }
         
         if os.path.exists(level_path):
             # Load question images from the level directory
@@ -2046,7 +2364,43 @@ class PhotoSlideshowGame:
                 if file.lower().endswith(('.png', '.jpg', '.jpeg')):
                     question_files.append(file)
             
-            question_files.sort()  # Sort to ensure consistent order
+            # Custom sort: story/intro files first, then AGONSA files in specific order
+            def sort_question_files(filename):
+                """Sort files: story/intro first, then AGONSA in order a, g, o, n, s, ans"""
+                filename_lower = filename.lower()
+                
+                # Check if it's an AGONSA file and determine order
+                # Order: a (asked), g (given), o (operation), n (number sentence), s (solve), ans (answer)
+                # Check for 'ans' first to avoid matching 'asked' files
+                if filename_lower == 'ans.jpg' or filename_lower.startswith('ans.'):
+                    return (1, 5)  # Category 1, order 5 (ans - what is the answer)
+                elif 'the answer' in filename_lower or (filename_lower.endswith('answer_.jpg') or filename_lower.endswith('answer.jpg')):
+                    return (1, 5)  # Category 1, order 5 (ans - what is the answer)
+                elif filename_lower == 'a.jpg' or (filename_lower.startswith('a.') and filename_lower.endswith('.jpg')):
+                    return (1, 0)  # Category 1, order 0 (a - what is asked)
+                elif 'asked' in filename_lower:
+                    return (1, 0)  # Category 1, order 0 (a - what is asked)
+                elif filename_lower == 'g.jpg' or (filename_lower.startswith('g.') and filename_lower.endswith('.jpg')):
+                    return (1, 1)  # Category 1, order 1 (g - what is given)
+                elif 'given' in filename_lower:
+                    return (1, 1)  # Category 1, order 1 (g - what is given)
+                elif filename_lower == 'o.jpg' or (filename_lower.startswith('o.') and filename_lower.endswith('.jpg')):
+                    return (1, 2)  # Category 1, order 2 (o - what operation to be used)
+                elif 'operation' in filename_lower:
+                    return (1, 2)  # Category 1, order 2 (o - what operation to be used)
+                elif filename_lower == 'n.jpg' or (filename_lower.startswith('n.') and filename_lower.endswith('.jpg')):
+                    return (1, 3)  # Category 1, order 3 (n - what is number sentence)
+                elif 'number sentence' in filename_lower:
+                    return (1, 3)  # Category 1, order 3 (n - what is number sentence)
+                elif filename_lower == 's.jpg' or (filename_lower.startswith('s.') and filename_lower.endswith('.jpg')):
+                    return (1, 4)  # Category 1, order 4 (s - solve)
+                elif filename_lower == 'solve.jpg' or filename_lower.startswith('solve.'):
+                    return (1, 4)  # Category 1, order 4 (s - solve)
+                else:
+                    # Story/intro files - sort alphabetically within category 0
+                    return (0, filename_lower)
+            
+            question_files.sort(key=sort_question_files)
             
             for i, question_file in enumerate(question_files):
                 question_data = {
@@ -2061,32 +2415,22 @@ class PhotoSlideshowGame:
                 
                 # Look for corresponding audio file
                 # Priority: 1. VOICE OVER directory, 2. Level directory, 3. Background music
-                # Parse main level number first (needed for special cases)
-                main_level = int(sublevel_string.split('.')[0])
+                # Audio file name matches photo name (e.g., "22.jpg" → "22.mp3")
                 audio_file_name = question_file.rsplit('.', 1)[0] + '.mp3'  # e.g., "22.mp3", "23.mp3"
                 audio_path = None
                 
-                # First, check VOICE OVER directory
+                # First, check VOICE OVER directory (audio names match photo names)
                 voice_over_path = resource_path(f"assets/audio/VOICE OVER/{audio_file_name}")
                 if os.path.exists(voice_over_path):
                     audio_path = voice_over_path
                     print(f"Found voice over for {question_file}: {audio_file_name}")
                 else:
-                    # Second, check level directory (for special cases like lvl 1.mp3)
-                    if question_file == '22.jpg' and main_level == 1:
-                        # Special case for 22.jpg - use lvl 1.mp3 in level directory
-                        level_audio_file = 'lvl 1.mp3'
-                        level_audio_path = os.path.join(level_path, level_audio_file)
-                        if os.path.exists(level_audio_path):
-                            audio_path = resource_path(level_audio_path)
-                            print(f"Found level audio for {question_file}: {level_audio_file}")
-                    else:
-                        # Check for audio file matching image name in level directory
-                        level_audio_file = audio_file_name
-                        level_audio_path = os.path.join(level_path, level_audio_file)
-                        if os.path.exists(level_audio_path):
-                            audio_path = resource_path(level_audio_path)
-                            print(f"Found level audio for {question_file}: {level_audio_file}")
+                    # Second, check level directory as fallback
+                    level_audio_file = audio_file_name
+                    level_audio_path = os.path.join(level_path, level_audio_file)
+                    if os.path.exists(level_audio_path):
+                        audio_path = resource_path(level_audio_path)
+                        print(f"Found level audio for {question_file}: {level_audio_file}")
                 
                 # If audio found, use it; otherwise fallback to background music
                 if audio_path:
@@ -2100,10 +2444,12 @@ class PhotoSlideshowGame:
                     else:
                         question_data['audio_path'] = None
                 
+                # Parse main level number for answer lookup
+                main_level = int(sublevel_string.split('.')[0])
+                
                 # Set correct answers based on level
-                # Apply Level 1 answers to specific sublevels (1.1, 1.2, 1.3)
-                if main_level == 1 and sublevel_string in level_1_answers:
-                    sublevel_answers = level_1_answers[sublevel_string]
+                if main_level in level_answers and sublevel_string in level_answers[main_level]:
+                    sublevel_answers = level_answers[main_level][sublevel_string]
                     if question_file in sublevel_answers:
                         answer_info = sublevel_answers[question_file]
                         
@@ -2113,28 +2459,26 @@ class PhotoSlideshowGame:
                         
                         # Handle answer - could be letter (A-D) or text input value
                         answer_value = answer_info['answer']
-                        if answer_value and not question_data['needs_text_input']:
-                            # Convert letter answer to number (A=1, B=2, C=3, D=4)
-                            if answer_value in ['A', 'B', 'C', 'D']:
-                                question_data['correct_answer'] = ord(answer_value) - ord('A') + 1
-                            else:
-                                question_data['correct_answer'] = 1  # Default
+                        if answer_value is None:
+                            question_data['correct_answer'] = None
                         elif question_data['needs_text_input']:
                             # Store expected text answer for text input questions
-                            question_data['correct_answer'] = answer_value  # Store as string (e.g., '9', '7')
+                            question_data['correct_answer'] = str(answer_value)
+                        elif answer_value in ['A', 'B', 'C', 'D']:
+                            # Convert letter answer to number (A=1, B=2, C=3, D=4)
+                            question_data['correct_answer'] = ord(answer_value) - ord('A') + 1
                         else:
-                            question_data['correct_answer'] = None
+                            question_data['correct_answer'] = 1  # Default fallback
                     else:
-                        # Image not in answer key - check if it's a scenario or default
-                        # Check if filename suggests scenario (common pattern)
-                        if '22.jpg' in question_file.lower() or '21.jpg' in question_file.lower():
-                            question_data['is_scenario'] = True
-                            question_data['correct_answer'] = None
-                        else:
-                            question_data['correct_answer'] = (i % 4) + 1
+                        # Image not in answer key - treat as scenario (no answer required)
+                        question_data['is_scenario'] = True
+                        question_data['needs_text_input'] = False
+                        question_data['correct_answer'] = None
                 else:
-                    # Default for other levels
-                    question_data['correct_answer'] = (i % 4) + 1
+                    # Level not in mapping - treat as scenario by default
+                    question_data['is_scenario'] = True
+                    question_data['needs_text_input'] = False
+                    question_data['correct_answer'] = None
                 
                 self.level_questions.append(question_data)
         
@@ -2322,7 +2666,7 @@ class PhotoSlideshowGame:
         if all_sublevels_done and not was_completed_before:
             self.mission_complete_active = True
             self.mission_complete_type = 'level'
-            self.mission_complete_sequence_index = 0  # Start with stars.gif
+            self.mission_complete_sequence_index = 0  # Start with REWARD STARS.mp4
             self.mission_complete_level_number = main_level
             self.current_state = "mission_complete"
         else:
@@ -2523,11 +2867,69 @@ class PhotoSlideshowGame:
         elif self.reward_type == 'wrong':
             reward_path = resource_path("videos/REWARD/WRONG.gif")
         elif self.reward_type == 'stars':
-            reward_path = resource_path("videos/REWARD/stars.gif")
+            # Handle stars as MP4 video
+            reward_path = resource_path("videos/REWARD/REWARD STARS.mp4")
+            
+            # Initialize video if not already playing
+            if not self.stars_video_playing:
+                self.start_stars_video()
+            
+            # Display current video frame
+            if self.stars_video_clip and self.stars_video_playing:
+                current_time = (pygame.time.get_ticks() - self.stars_video_start_time) / 1000.0
+                
+                if current_time < self.stars_video_clip.duration:
+                    try:
+                        frame = self.stars_video_clip.get_frame(current_time)
+                        # Convert numpy array to pygame surface
+                        if NUMPY_AVAILABLE:
+                            frame = np.swapaxes(frame, 0, 1)
+                            frame_surface = pygame.surfarray.make_surface(frame)
+                        else:
+                            frame_surface = pygame.image.frombuffer(frame.tobytes(), (frame.shape[1], frame.shape[0]), "RGB")
+                        
+                        # Scale to fit screen
+                        scaled_frame = self.scale_photo_to_fit(frame_surface)
+                        frame_rect = scaled_frame.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                        self.screen.blit(scaled_frame, frame_rect)
+                        content_rect = frame_rect
+                    except Exception as e:
+                        print(f"Error displaying stars video frame: {e}")
+                        # Fallback to text
+                        reward_text = "STARS! PERFECT SCORE!"
+                        reward_surface = self.font_large.render(reward_text, True, WHITE)
+                        reward_rect = reward_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                        self.screen.blit(reward_surface, reward_rect)
+                        content_rect = None
+                else:
+                    # Video finished - show last frame
+                    if self.stars_video_clip:
+                        try:
+                            last_frame = self.stars_video_clip.get_frame(self.stars_video_clip.duration - 0.1)
+                            if NUMPY_AVAILABLE:
+                                last_frame = np.swapaxes(last_frame, 0, 1)
+                                frame_surface = pygame.surfarray.make_surface(last_frame)
+                            else:
+                                frame_surface = pygame.image.frombuffer(last_frame.tobytes(), (last_frame.shape[1], last_frame.shape[0]), "RGB")
+                            
+                            scaled_frame = self.scale_photo_to_fit(frame_surface)
+                            frame_rect = scaled_frame.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                            self.screen.blit(scaled_frame, frame_rect)
+                            content_rect = frame_rect
+                        except Exception as e:
+                            print(f"Error displaying last stars video frame: {e}")
+                            content_rect = None
+            else:
+                # Fallback if video not available
+                reward_text = "STARS! PERFECT SCORE!"
+                reward_surface = self.font_large.render(reward_text, True, WHITE)
+                reward_rect = reward_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                self.screen.blit(reward_surface, reward_rect)
+                content_rect = None
         
-        if reward_path and os.path.exists(reward_path):
+        if self.reward_type != 'stars' and reward_path and os.path.exists(reward_path):
             try:
-                # Try to load the GIF file
+                # Try to load the GIF file (for correct/wrong rewards)
                 reward_image = pygame.image.load(reward_path)
                 
                 # Scale the image to fit the screen while maintaining aspect ratio
@@ -2557,18 +2959,14 @@ class PhotoSlideshowGame:
                 print(f"Error loading reward GIF: {e}")
                 # Fallback to text
                 reward_text = self.reward_type.upper()
-                if self.reward_type == 'stars':
-                    reward_text = "STARS! PERFECT SCORE!"
                 
                 reward_surface = self.font_large.render(reward_text, True, WHITE)
                 reward_rect = reward_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                 self.screen.blit(reward_surface, reward_rect)
                 content_rect = None
-        else:
-            # Fallback text if GIF not found
+        elif self.reward_type != 'stars':
+            # Fallback text if GIF not found (for correct/wrong rewards)
             reward_text = self.reward_type.upper()
-            if self.reward_type == 'stars':
-                reward_text = "STARS! PERFECT SCORE!"
             
             reward_surface = self.font_large.render(reward_text, True, WHITE)
             reward_rect = reward_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
@@ -2594,8 +2992,70 @@ class PhotoSlideshowGame:
         elif self.mission_complete_type == 'level':
             # Level completion: sequence of 3 screens
             if self.mission_complete_sequence_index == 0:
-                # First: stars.gif
-                image_path = resource_path("videos/REWARD/stars.gif")
+                # First: REWARD STARS.mp4
+                stars_video_path = resource_path("videos/REWARD/REWARD STARS.mp4")
+                
+                # Initialize video if not already playing
+                if not self.stars_video_playing:
+                    self.start_stars_video()
+                
+                # Display current video frame
+                if self.stars_video_clip and self.stars_video_playing:
+                    current_time = (pygame.time.get_ticks() - self.stars_video_start_time) / 1000.0
+                    
+                    if current_time < self.stars_video_clip.duration:
+                        try:
+                            frame = self.stars_video_clip.get_frame(current_time)
+                            # Convert numpy array to pygame surface
+                            if NUMPY_AVAILABLE:
+                                frame = np.swapaxes(frame, 0, 1)
+                                frame_surface = pygame.surfarray.make_surface(frame)
+                            else:
+                                frame_surface = pygame.image.frombuffer(frame.tobytes(), (frame.shape[1], frame.shape[0]), "RGB")
+                            
+                            # Scale to fit screen
+                            scaled_frame = self.scale_photo_to_fit(frame_surface)
+                            image_rect = scaled_frame.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                            self.screen.blit(scaled_frame, image_rect)
+                            content_rect = image_rect
+                            
+                            print(f"Successfully displaying stars video frame")
+                        except Exception as e:
+                            print(f"Error displaying stars video frame: {e}")
+                            # Fallback to text
+                            fallback_text = "Stars!"
+                            text_surface = self.font_large.render(fallback_text, True, WHITE)
+                            text_rect = text_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                            self.screen.blit(text_surface, text_rect)
+                            content_rect = None
+                    else:
+                        # Video finished - show last frame
+                        if self.stars_video_clip:
+                            try:
+                                last_frame = self.stars_video_clip.get_frame(self.stars_video_clip.duration - 0.1)
+                                if NUMPY_AVAILABLE:
+                                    last_frame = np.swapaxes(last_frame, 0, 1)
+                                    frame_surface = pygame.surfarray.make_surface(last_frame)
+                                else:
+                                    frame_surface = pygame.image.frombuffer(last_frame.tobytes(), (last_frame.shape[1], last_frame.shape[0]), "RGB")
+                                
+                                scaled_frame = self.scale_photo_to_fit(frame_surface)
+                                image_rect = scaled_frame.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                                self.screen.blit(scaled_frame, image_rect)
+                                content_rect = image_rect
+                            except Exception as e:
+                                print(f"Error displaying last stars video frame: {e}")
+                                content_rect = None
+                else:
+                    # Fallback if video not available
+                    fallback_text = "Stars!"
+                    text_surface = self.font_large.render(fallback_text, True, WHITE)
+                    text_rect = text_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                    self.screen.blit(text_surface, text_rect)
+                    content_rect = None
+                
+                # Skip the normal image loading for stars video
+                image_path = None
             elif self.mission_complete_sequence_index == 1:
                 # Second: MISSION COMPLETE 1.jpg
                 image_path = resource_path("assets/photos/MISSION COMPLETE & REWARDS/MISSION COMPLETE 1.jpg")
@@ -2660,6 +3120,15 @@ class PhotoSlideshowGame:
                     self.proceed_after_sublevel_complete()
                 elif self.mission_complete_type == 'level':
                     # Level completion: advance through sequence
+                    # Clean up stars video if we're moving past it
+                    if self.mission_complete_sequence_index == 0 and self.stars_video_clip:
+                        try:
+                            self.stars_video_clip.close()
+                        except:
+                            pass
+                        self.stars_video_clip = None
+                        self.stars_video_playing = False
+                    
                     self.mission_complete_sequence_index += 1
                     if self.mission_complete_sequence_index >= 3:
                         # Sequence complete: show level-specific map
@@ -2676,6 +3145,15 @@ class PhotoSlideshowGame:
                     self.proceed_after_sublevel_complete()
                 elif self.mission_complete_type == 'level':
                     # Level completion: advance through sequence
+                    # Clean up stars video if we're moving past it
+                    if self.mission_complete_sequence_index == 0 and self.stars_video_clip:
+                        try:
+                            self.stars_video_clip.close()
+                        except:
+                            pass
+                        self.stars_video_clip = None
+                        self.stars_video_playing = False
+                    
                     self.mission_complete_sequence_index += 1
                     if self.mission_complete_sequence_index >= 3:
                         # Sequence complete: show level-specific map
