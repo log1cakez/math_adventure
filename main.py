@@ -56,7 +56,7 @@ class PhotoSlideshowGame:
         self.screen_width = 1600
         self.screen_height = 1000
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
-        pygame.display.set_caption("Photo Slideshow Game")
+        pygame.display.set_caption("Math Adventure")
         self.clock = pygame.time.Clock()
         self.fullscreen = False
         
@@ -540,7 +540,7 @@ class PhotoSlideshowGame:
                 except Exception as e:
                     print(f"Error displaying splash video frame: {e}")
                     # Fallback frame
-                    title = self.font_large.render("Photo Slideshow Game", True, WHITE)
+                    title = self.font_large.render("Math Adventure", True, WHITE)
                     title_rect = title.get_rect(
                         center=(self.screen_width // 2, self.screen_height // 2 - 50)
                     )
@@ -558,7 +558,7 @@ class PhotoSlideshowGame:
                     self.splash_video_clip = None
         else:
             # Fallback if no video
-            title = self.font_large.render("Photo Slideshow Game", True, WHITE)
+            title = self.font_large.render("Math Adventure", True, WHITE)
             title_rect = title.get_rect(
                 center=(self.screen_width // 2, self.screen_height // 2 - 50)
             )
@@ -1506,7 +1506,7 @@ class PhotoSlideshowGame:
         self.screen.fill(BLACK)
         
         # Title
-        title = self.font_large.render("Photo Slideshow Game", True, WHITE)
+        title = self.font_large.render("Math Adventure", True, WHITE)
         title_rect = title.get_rect(center=(self.screen_width // 2, 150))
         self.screen.blit(title, title_rect)
         
