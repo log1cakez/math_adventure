@@ -2777,6 +2777,26 @@ class PhotoSlideshowGame:
         title_surface = self.font_medium.render(title_text, True, WHITE)
         title_rect = title_surface.get_rect(center=(input_x + self.text_input_rect.width // 2, input_y - 30))
         self.screen.blit(title_surface, title_rect)
+
+    def load_gif_frames(self, gif_path: str):
+        """Load GIF frames using Pillow if available"""
+        try:
+            from PIL import Image
+        except Exception:
+            return []
+        
+        frames = []
+        try:
+            image = Image.open(gif_path)
+            for frame_index in range(image.n_frames):
+                image.seek(frame_index)
+                frame = image.convert("RGBA")
+                frame_surface = pygame.image.fromstring(frame.tobytes(), frame.size, "RGBA")
+                frames.append(frame_surface)
+        except Exception as e:
+            print(f"Failed to load GIF frames: {e}")
+            return []
+        return frames
     
     def draw_level_reward(self):
         """Draw the level reward screen"""
@@ -2852,8 +2872,14 @@ class PhotoSlideshowGame:
         
         if self.reward_type != 'stars' and reward_path and os.path.exists(reward_path):
             try:
-                # Try to load the GIF file (for correct/wrong rewards)
-                reward_image = pygame.image.load(reward_path)
+                # Animate GIFs by loading frame sequence from disk
+                frames = self.load_gif_frames(reward_path)
+                if frames:
+                    frame_duration = 0.08  # 80ms per frame
+                    frame_index = int((pygame.time.get_ticks() / 1000.0) / frame_duration) % len(frames)
+                    reward_image = frames[frame_index]
+                else:
+                    reward_image = pygame.image.load(reward_path)
                 
                 # Scale the image to fit the screen while maintaining aspect ratio
                 image_width, image_height = reward_image.get_size()
