@@ -2298,18 +2298,43 @@ class PhotoSlideshowGame:
                 }
                 
                 # Look for corresponding audio file
-                # Priority: 1. VOICE OVER directory, 2. Level directory, 3. Background music
+                # Priority: 1. keyword VO, 2. exact VO, 3. level dir, 4. background music
                 # Audio file name matches photo name (e.g., "22.jpg" → "22.mp3")
                 audio_file_name = question_file.rsplit('.', 1)[0] + '.mp3'  # e.g., "22.mp3", "23.mp3"
                 audio_path = None
                 
-                # First, check VOICE OVER directory (audio names match photo names)
-                voice_over_path = resource_path(f"assets/audio/VOICE OVER/{audio_file_name}")
-                if os.path.exists(voice_over_path):
-                    audio_path = voice_over_path
-                    print(f"Found voice over for {question_file}: {audio_file_name}")
-                else:
-                    # Second, check level directory as fallback
+                # First, check keyword-based AGONSA audio
+                filename_lower = question_file.lower()
+                keyword_audio_map = {
+                    "asked": "asked.mp3",
+                    "given": "given.mp3",
+                    "operation": "operation.mp3",
+                    "number sentence": "number sentence.mp3",
+                    "number_sentence": "number sentence.mp3",
+                    "solve": "solve.mp3",
+                    "answer": "answer.mp3",
+                }
+                keyword_audio_file = None
+                for keyword, audio_name in keyword_audio_map.items():
+                    if keyword in filename_lower:
+                        keyword_audio_file = audio_name
+                        break
+                
+                if keyword_audio_file:
+                    keyword_audio_path = resource_path(f"assets/audio/agonsa/{keyword_audio_file}")
+                    if os.path.exists(keyword_audio_path):
+                        audio_path = keyword_audio_path
+                        print(f"Found keyword AGONSA audio for {question_file}: {keyword_audio_file}")
+                
+                # Second, check exact VOICE OVER (audio names match photo names)
+                if not audio_path:
+                    voice_over_path = resource_path(f"assets/audio/VOICE OVER/{audio_file_name}")
+                    if os.path.exists(voice_over_path):
+                        audio_path = voice_over_path
+                        print(f"Found voice over for {question_file}: {audio_file_name}")
+                
+                # Third, check level directory as fallback
+                if not audio_path:
                     level_audio_file = audio_file_name
                     level_audio_path = os.path.join(level_path, level_audio_file)
                     if os.path.exists(level_audio_path):
@@ -2385,6 +2410,10 @@ class PhotoSlideshowGame:
                 else:
                     pygame.mixer.music.play()  # Play once
                     print(f"Playing question {self.current_question_index + 1} audio: {audio_path}")
+                    # Resume background music immediately when the clip ends
+                    if not hasattr(self, "bg_music_resume_event"):
+                        self.bg_music_resume_event = pygame.USEREVENT + 2
+                    pygame.mixer.music.set_endevent(self.bg_music_resume_event)
             except Exception as e:
                 print(f"Error playing question audio: {e}")
         else:
@@ -3140,6 +3169,10 @@ class PhotoSlideshowGame:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                elif hasattr(self, "bg_music_resume_event") and event.type == self.bg_music_resume_event:
+                    # Resume background music after VO/clip ends
+                    pygame.mixer.music.set_endevent()
+                    self.play_background_music()
                 elif event.type == pygame.VIDEORESIZE:
                     # Handle window resize
                     self.handle_window_resize(event.w, event.h)
