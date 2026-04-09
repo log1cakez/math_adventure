@@ -138,6 +138,9 @@ class PhotoSlideshowGame:
         
         # New game intro sequence
         self.intro_image = None
+        self.intro_video_clip = None
+        self.intro_video_playing = False
+        self.intro_video_start_time = 0
         
         # Video clips for splash and second page
         self.splash_video_clip = None
@@ -154,13 +157,25 @@ class PhotoSlideshowGame:
         self.level_intro_video_playing = False
         self.level_intro_video_start_time = 0
         self.level_intro_video_path = None
-        self.level_intro_audio_path = None
+        self.level_intro_audio_paths = None  # List of audio paths (e.g. [pt1, pt2] for 5.1)
+        self.level_intro_audio_index = 0
+        self.level_intro_all_audio_finished = False
         self.level_intro_sublevel = None
+        self.level_intro_music_end_event = pygame.USEREVENT + 3
+        
+        # Vocabulary screen shown before each sublevel starts
+        self.sublevel_vocab_sublevel = None
+        self.sublevel_vocab_image_path = None
+        self.sublevel_vocab_image = None
         
         # Video clip for stars reward
         self.stars_video_clip = None
         self.stars_video_playing = False
         self.stars_video_start_time = 0
+        
+        # Video clip for correct/wrong reward (MP4, loops)
+        self.reward_video_clip = None
+        self.reward_video_start_time = 0
         
         # Interactive areas (you can adjust these coordinates based on your image)
         self.gear_area = None  # Will be set based on image dimensions
@@ -341,8 +356,27 @@ class PhotoSlideshowGame:
         
         return None
     
+    def _get_first_item_from_folder(self, folder: str) -> Optional[str]:
+        """Get the leading number from the first file in folder (sorted by numeric prefix), excluding intro mp4s."""
+        if not folder or not os.path.exists(folder):
+            return None
+        files = [
+            f for f in os.listdir(folder)
+            if os.path.isfile(os.path.join(folder, f)) and not f.endswith("_intro.mp4")
+        ]
+        if not files:
+            return None
+
+        def sort_key(name):
+            m = re.match(r"^(\d+)", name)
+            return int(m.group(1)) if m else 0
+
+        first = min(files, key=sort_key)
+        m = re.match(r"^(\d+)", first)
+        return m.group(1) if m else None
+
     def get_sublevel_intro_paths(self, sublevel_string: str):
-        """Get intro video/audio paths for a sublevel"""
+        """Get intro video/audio paths for a sublevel. Returns (video_path, audio_paths) where audio_paths is a list."""
         sublevel_folder = self.get_sublevel_folder(sublevel_string)
         intro_video_path = None
         
@@ -351,11 +385,49 @@ class PhotoSlideshowGame:
             if os.path.exists(candidate_video):
                 intro_video_path = candidate_video
         
-        intro_audio_path = resource_path(f"assets/audio/lvl_intro/{sublevel_string}_intro.mp3")
-        if not os.path.exists(intro_audio_path):
-            intro_audio_path = None
+        # Level 5.1 has pt1 and pt2 - play in sequence
+        if sublevel_string == "5.1":
+            intro_audio_paths = []
+            for suffix in ("_intro_pt1.mp3", "_intro_pt2.mp3"):
+                p = resource_path(f"assets/audio/lvl_intro/{sublevel_string}{suffix}")
+                if os.path.exists(p):
+                    intro_audio_paths.append(p)
+            if not intro_audio_paths:
+                intro_audio_paths = None
+        else:
+            intro_audio_path = resource_path(f"assets/audio/lvl_intro/{sublevel_string}_intro.mp3")
+            if not os.path.exists(intro_audio_path) and not intro_video_path and sublevel_folder:
+                # No MP4 and no X.Y_intro.mp3: use first item in folder (e.g. 189.mp3)
+                first_item = self._get_first_item_from_folder(sublevel_folder)
+                if first_item:
+                    fallback = resource_path(f"assets/audio/lvl_intro/{first_item}.mp3")
+                    if os.path.exists(fallback):
+                        intro_audio_path = fallback
+            intro_audio_paths = [intro_audio_path] if os.path.exists(intro_audio_path) else None
         
-        return intro_video_path, intro_audio_path
+        return intro_video_path, intro_audio_paths
+    
+    def get_sublevel_vocab_path(self, sublevel_string: str) -> Optional[str]:
+        """Get vocabulary image path for a sublevel from assets/photos/Vocabulary words."""
+        try:
+            main_level = sublevel_string.split('.')[0]
+        except Exception:
+            return None
+        
+        vocab_folder = resource_path(f"assets/photos/Vocabulary words/level {main_level}")
+        if not os.path.exists(vocab_folder):
+            return None
+        
+        # Match filenames loosely (handles extra spaces like 'level 10. 2 .png')
+        target = f"level{sublevel_string}".replace(" ", "")
+        for name in os.listdir(vocab_folder):
+            if not name.lower().endswith((".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp")):
+                continue
+            normalized = os.path.splitext(name.lower())[0].replace(" ", "")
+            if normalized.startswith(target):
+                return os.path.join(vocab_folder, name)
+        
+        return None
     
     def proceed_after_sublevel_complete(self):
         """Proceed to next sublevel after completing a sublevel"""
@@ -537,7 +609,7 @@ class PhotoSlideshowGame:
         instruction = self.font_medium.render(instruction_text, True, WHITE)
         instruction_rect = instruction.get_rect(center=(footer_x + footer_width // 2, footer_y + footer_height // 2))
         self.screen.blit(instruction, instruction_rect)
-    
+
     def draw_splash(self):
         """Draw the splash screen with video"""
         self.screen.fill(BLACK)
@@ -676,13 +748,13 @@ class PhotoSlideshowGame:
         self.draw_footer_instruction(instruction_text, current_content_rect)
 
     def draw_level_intro(self):
-        """Draw the sublevel intro video (muted)"""
+        """Draw the sublevel intro video (muted, looped). After audio ends, show play again prompt."""
         self.screen.fill(BLACK)
         
         if self.level_intro_video_clip and self.level_intro_video_playing:
+            # Always loop video
             current_time = (pygame.time.get_ticks() - self.level_intro_video_start_time) / 1000.0
             try:
-                # Loop video until user input
                 if self.level_intro_video_clip.duration > 0:
                     current_time = current_time % self.level_intro_video_clip.duration
                 frame = self.level_intro_video_clip.get_frame(current_time)
@@ -700,6 +772,13 @@ class PhotoSlideshowGame:
                 frame_rect = scaled_frame.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                 self.screen.blit(scaled_frame, frame_rect)
                 
+                # Show "Press SPACE to play again" when all audio parts have finished
+                audio_finished = self.level_intro_audio_paths and self.level_intro_all_audio_finished
+                if audio_finished:
+                    play_text = self.font_medium.render("Press SPACE to play again", True, WHITE)
+                    play_rect = play_text.get_rect(center=(self.screen_width // 2, self.screen_height - 80))
+                    self.screen.blit(play_text, play_rect)
+                
                 instruction_text = "Press any key to skip intro"
                 self.draw_footer_instruction(instruction_text, frame_rect)
                 return
@@ -713,6 +792,24 @@ class PhotoSlideshowGame:
         self.screen.blit(title, title_rect)
         instruction_text = "Press any key to continue"
         self.draw_footer_instruction(instruction_text)
+    
+    def draw_sublevel_vocab(self):
+        """Draw vocabulary image before sublevel intro."""
+        self.screen.fill(BLACK)
+        content_rect = None
+        
+        if self.sublevel_vocab_image:
+            scaled_image = self.scale_photo_to_fit(self.sublevel_vocab_image)
+            image_rect = scaled_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+            self.screen.blit(scaled_image, image_rect)
+            content_rect = image_rect
+        else:
+            title = self.font_large.render(f"Level {self.sublevel_vocab_sublevel} Vocabulary", True, WHITE)
+            title_rect = title.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+            self.screen.blit(title, title_rect)
+        
+        instruction_text = "Press SPACE or click to continue"
+        self.draw_footer_instruction(instruction_text, content_rect)
     
     def draw_select(self):
         """Draw the select screen"""
@@ -1217,6 +1314,9 @@ class PhotoSlideshowGame:
                                     self.exercise_active_input = i
                                     break
                         self.exercise_inputs[self.exercise_active_input] += char
+                        # Auto-check once all three answers are filled
+                        if all(inp.strip() for inp in self.exercise_inputs):
+                            self.check_exercise_answers()
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
                 mouse_pos = pygame.mouse.get_pos()
@@ -1251,13 +1351,9 @@ class PhotoSlideshowGame:
         all_filled = all(self.exercise_inputs)
         
         if not all_filled:
-            # Show wrong reward if not all filled
             self.previous_state_before_reward = "exercise_level"
-            self.showing_reward = True
-            self.reward_type = 'wrong'
-            self.reward_start_time = pygame.time.get_ticks()
-            self.current_state = "level_reward"
-            self.play_reward_audio('wrong')
+            # Show wrong reward if not all filled
+            self.show_reward('wrong')
             print("Not all inputs are filled")
             return
         
@@ -1278,13 +1374,9 @@ class PhotoSlideshowGame:
         
         # Get expected answers for current exercise level
         if self.current_exercise_level not in exercise_answer_keys:
-            # Level not in answer keys - treat as correct if all filled
             self.previous_state_before_reward = "exercise_level"
-            self.showing_reward = True
-            self.reward_type = 'correct'
-            self.reward_start_time = pygame.time.get_ticks()
-            self.current_state = "level_reward"
-            self.play_reward_audio('correct')
+            # Level not in answer keys - treat as correct if all filled
+            self.show_reward('correct')
             print(f"Exercise level {self.current_exercise_level} not in answer keys, accepting any input")
             return
         
@@ -1301,20 +1393,14 @@ class PhotoSlideshowGame:
                 is_correct = False
                 break
         
-        # Show appropriate reward
         self.previous_state_before_reward = "exercise_level"
-        self.showing_reward = True
+        # Show appropriate reward
         if is_correct:
-            self.reward_type = 'correct'
-            self.play_reward_audio('correct')
+            self.show_reward('correct')
             print(f"Exercise answers correct for level {self.current_exercise_level}: {self.exercise_inputs}")
         else:
-            self.reward_type = 'wrong'
-            self.play_reward_audio('wrong')
+            self.show_reward('wrong')
             print(f"Exercise answers wrong for level {self.current_exercise_level}. Expected: {expected_answers}, Got: {self.exercise_inputs}")
-        
-        self.reward_start_time = pygame.time.get_ticks()
-        self.current_state = "level_reward"
     
     def handle_intro_input(self, event):
         """Handle input in intro state"""
@@ -1338,11 +1424,29 @@ class PhotoSlideshowGame:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_F11:
                 self.toggle_fullscreen()
+            elif event.key == pygame.K_SPACE and self.level_intro_audio_paths and self.level_intro_all_audio_finished:
+                # Replay audio from the beginning (pt1, then pt2 for 5.1)
+                self.level_intro_all_audio_finished = False
+                if self.audio_enabled:
+                    self._play_level_intro_audio_part(0)
             else:
                 self.finish_level_intro()
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
                 self.finish_level_intro()
+        return True
+    
+    def handle_sublevel_vocab_input(self, event):
+        """Handle input on sublevel vocabulary screen."""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_F11:
+                self.toggle_fullscreen()
+            elif event.key == pygame.K_ESCAPE:
+                self.current_state = "map_image"
+            else:
+                self.start_level_intro(self.sublevel_vocab_sublevel)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self.start_level_intro(self.sublevel_vocab_sublevel)
         return True
     
     def handle_map_input(self, event):
@@ -1441,7 +1545,7 @@ class PhotoSlideshowGame:
         """Handle input in mechanics state"""
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                return False  # Quit game
+                self.current_state = "second_page"
             elif event.key == pygame.K_F11:
                 # Toggle fullscreen
                 self.toggle_fullscreen()
@@ -1792,7 +1896,7 @@ class PhotoSlideshowGame:
         """Handle input in mechanics state"""
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                return False  # Quit game
+                self.current_state = "second_page"
             elif event.key == pygame.K_F11:
                 # Toggle fullscreen
                 self.toggle_fullscreen()
@@ -2088,12 +2192,54 @@ class PhotoSlideshowGame:
     def start_level(self, sublevel_string):
         """Start a specific sublevel (format: "1.1", "1.2", "1.3", etc.)"""
         self.current_level_number = sublevel_string
-        self.start_level_intro(sublevel_string)
+        self.start_sublevel_vocab(sublevel_string)
+    
+    def start_sublevel_vocab(self, sublevel_string: str):
+        """Show vocabulary image for sublevel before intro."""
+        self.sublevel_vocab_sublevel = sublevel_string
+        self.sublevel_vocab_image_path = self.get_sublevel_vocab_path(sublevel_string)
+        self.sublevel_vocab_image = None
+        
+        if not self.sublevel_vocab_image_path:
+            # No vocab image for this sublevel; continue existing flow
+            self.start_level_intro(sublevel_string)
+            return
+        
+        try:
+            self.sublevel_vocab_image = pygame.image.load(self.sublevel_vocab_image_path)
+            self.current_state = "sublevel_vocab"
+            print(f"Loaded vocabulary image: {self.sublevel_vocab_image_path}")
+        except Exception as e:
+            print(f"Error loading vocabulary image: {e}")
+            self.sublevel_vocab_image = None
+            self.start_level_intro(sublevel_string)
+    
+    def _play_level_intro_audio_part(self, index: int):
+        """Play a single part of level intro audio by index."""
+        if not self.level_intro_audio_paths or index >= len(self.level_intro_audio_paths):
+            return
+        path = self.level_intro_audio_paths[index]
+        try:
+            pygame.mixer.music.load(path)
+            pygame.mixer.music.set_endevent(self.level_intro_music_end_event)
+            pygame.mixer.music.play()
+            self.level_intro_audio_index = index
+            print(f"Playing level intro audio: {path}")
+        except Exception as e:
+            print(f"Error playing level intro audio: {e}")
     
     def start_level_intro(self, sublevel_string: str):
-        """Start the intro video/audio for a sublevel (video muted, MP3 plays)"""
+        """Start the intro video/audio for a sublevel (video muted, MP3 plays). Skip entirely if no intro MP4."""
         self.level_intro_sublevel = sublevel_string
-        self.level_intro_video_path, self.level_intro_audio_path = self.get_sublevel_intro_paths(sublevel_string)
+        self.level_intro_video_path, self.level_intro_audio_paths = self.get_sublevel_intro_paths(sublevel_string)
+        
+        # If no intro MP4, skip intro and go straight to questions
+        if not self.level_intro_video_path:
+            self.start_level_questions(sublevel_string)
+            return
+        
+        self.level_intro_audio_index = 0
+        self.level_intro_all_audio_finished = False
         
         # Reset any previous intro state
         self.level_intro_video_clip = None
@@ -2113,17 +2259,11 @@ class PhotoSlideshowGame:
         elif self.level_intro_video_path and not MOVIEPY_AVAILABLE:
             print("MoviePy not available. Install with: pip install moviepy")
         
-        # Play intro audio (MP3)
-        if self.audio_enabled and self.level_intro_audio_path:
-            try:
-                pygame.mixer.music.load(self.level_intro_audio_path)
-                pygame.mixer.music.play()
-                print(f"Playing level intro audio: {self.level_intro_audio_path}")
-            except Exception as e:
-                print(f"Error playing level intro audio: {e}")
-        else:
-            if self.level_intro_audio_path:
-                print(f"Level intro audio not found: {self.level_intro_audio_path}")
+        # Play intro audio (first part, or single file)
+        if self.audio_enabled and self.level_intro_audio_paths:
+            self._play_level_intro_audio_part(0)
+        elif self.level_intro_audio_paths:
+            print(f"Level intro audio not found: {self.level_intro_audio_paths}")
         
         self.current_state = "level_intro"
     
@@ -2138,6 +2278,7 @@ class PhotoSlideshowGame:
         self.level_intro_video_clip = None
         self.level_intro_video_playing = False
         self.level_intro_video_start_time = 0
+        pygame.mixer.music.set_endevent()  # Clear level intro end event
         
         # Stop intro audio before starting questions
         try:
@@ -2179,13 +2320,13 @@ class PhotoSlideshowGame:
         }
         level_2_answers = {
             '2.1': {'63': 'C', '66': 'C', '67': 'A', '68': 'D', '71': '18', '74': 'A'},
-            '2.2': {'79': 'D', '82': 'C', '83': 'A', '84': 'D', '86': '19', '87': 'A'},
-            '2.3': {'91': 'A', '94': 'D', '95': 'A', '96': 'A', '98': '15', '99': 'B'},
+            '2.2': {'79': 'D', '82': 'C', '83': 'A', '84': 'D', '85': '19', '87': 'A'},  # 85_solve.png
+            '2.3': {'91': 'A', '94': 'D', '95': 'A', '96': 'A', '97': '15', '99': 'B'},  # 97_solve.png
         }
         level_3_answers = {
             '3.1': {'110': 'A', '111': 'D', '112': 'A', '113': 'D', '114': '26', '115': 'B'},
-            '3.2': {'119': 'D', '120': 'C', '121': 'A', '122': 'B', '124': '22', '126': 'B'},
-            '3.3': {'130': 'D', '131': 'A', '132': 'A', '133': 'A', '135': '27', '136': 'D'},
+            '3.2': {'119': 'D', '120': 'C', '121': 'A', '122': 'B', '123': '22', '126': 'B'},  # 123_solve.png
+            '3.3': {'130': 'D', '131': 'A', '132': 'A', '133': 'A', '134': '27', '136': 'D'},  # 134_solve.png
         }
         level_4_answers = {
             '4.1': {'146': 'C', '147': 'B', '148': 'A', '149': 'C', '150': '32', '152': 'B'},
@@ -2193,8 +2334,8 @@ class PhotoSlideshowGame:
             '4.3': {'165': 'A', '166': 'A', '167': 'C', '168': 'A', '169': '32', '171': 'C'},
         }
         level_5_answers = {
-            '5.1': {'180': 'C', '181': 'D', '182': 'A', '183': 'A', '186': '48', '187': 'D'},
-            '5.2': {'190': 'D', '191': 'B', '192': 'A', '193': 'B', '195': '48', '196': 'D'},
+            '5.1': {'180': 'C', '181': 'D', '182': 'A', '183': 'A', '184': '48', '187': 'D'},  # 184_solve.png
+            '5.2': {'190': 'D', '191': 'B', '192': 'A', '193': 'B', '194': '48', '196': 'D'},  # 194_solve.png
             '5.3': {'200': 'A', '201': 'C', '202': 'D', '203': 'B', '204': '48', '206': 'B'},
         }
         level_6_answers = {
@@ -2204,12 +2345,12 @@ class PhotoSlideshowGame:
         }
         level_7_answers = {
             '7.1': {'245': 'A', '246': 'D', '247': 'B', '248': 'A', '249': '65', '250': 'A'},
-            '7.2': {'254': 'B', '255': 'C', '256': 'A', '257': 'C', '258': '66', '260': 'D'},
+            '7.2': {'254': 'B', '255': 'C', '256': 'A', '257': 'C', '258': '66', '260': 'D'},  # 258_solve.png  
             '7.3': {'263': 'A', '264': 'C', '265': 'C', '266': 'C', '267': '66', '269': 'D'},
         }
         level_8_answers = {
             '8.1': {'274': 'C', '275': 'B', '276': 'D', '277': 'B', '278': '75', '279': 'A'},
-            '8.2': {'283': 'A', '284': 'B', '285': 'D', '286': 'C', '287': '80', '289': 'C'},
+            '8.2': {'283': 'A', '284': 'B', '285': 'D', '286': 'C', '287': '80', '289': 'C'},  # 288_solve_.png
             '8.3': {'293': 'C', '294': 'C', '295': 'A', '296': 'C', '297': '76', '299': 'A'},
         }
         level_9_answers = {
@@ -2298,40 +2439,37 @@ class PhotoSlideshowGame:
                 }
                 
                 # Look for corresponding audio file
-                # Priority: 1. keyword VO, 2. exact VO, 3. level dir, 4. background music
-                # Audio file name matches photo name (e.g., "22.jpg" → "22.mp3")
-                audio_file_name = question_file.rsplit('.', 1)[0] + '.mp3'  # e.g., "22.mp3", "23.mp3"
+                # Priority: 1. VOICE OVER (exact match - play voice over with its associated PNG)
+                #           2. keyword AGONSA, 3. level dir, 4. background music
+                # Audio file name matches photo name (e.g., "189.png" → "189.mp3")
+                audio_file_name = question_file.rsplit('.', 1)[0] + '.mp3'  # e.g., "189.mp3", "341.mp3"
                 audio_path = None
-                
-                # First, check keyword-based AGONSA audio
                 filename_lower = question_file.lower()
-                keyword_audio_map = {
-                    "asked": "asked.mp3",
-                    "given": "given.mp3",
-                    "operation": "operation.mp3",
-                    "number sentence": "number sentence.mp3",
-                    "number_sentence": "number sentence.mp3",
-                    "solve": "solve.mp3",
-                    "answer": "answer.mp3",
-                }
-                keyword_audio_file = None
-                for keyword, audio_name in keyword_audio_map.items():
-                    if keyword in filename_lower:
-                        keyword_audio_file = audio_name
-                        break
                 
-                if keyword_audio_file:
-                    keyword_audio_path = resource_path(f"assets/audio/agonsa/{keyword_audio_file}")
-                    if os.path.exists(keyword_audio_path):
-                        audio_path = keyword_audio_path
-                        print(f"Found keyword AGONSA audio for {question_file}: {keyword_audio_file}")
+                # First, check VOICE OVER - exact match so voice over plays with its associated PNG
+                voice_over_path = resource_path(f"assets/audio/VOICE OVER/{audio_file_name}")
+                if os.path.exists(voice_over_path):
+                    audio_path = voice_over_path
+                    print(f"Found voice over for {question_file}: {audio_file_name}")
                 
-                # Second, check exact VOICE OVER (audio names match photo names)
+                # Second, check keyword-based AGONSA audio (when no voice over for this PNG)
                 if not audio_path:
-                    voice_over_path = resource_path(f"assets/audio/VOICE OVER/{audio_file_name}")
-                    if os.path.exists(voice_over_path):
-                        audio_path = voice_over_path
-                        print(f"Found voice over for {question_file}: {audio_file_name}")
+                    keyword_audio_map = {
+                        "asked": "asked.mp3",
+                        "given": "given.mp3",
+                        "operation": "operation.mp3",
+                        "number sentence": "number sentence.mp3",
+                        "number_sentence": "number sentence.mp3",
+                        "solve": "solve.mp3",
+                        "answer": "answer.mp3",
+                    }
+                    for keyword, audio_name in keyword_audio_map.items():
+                        if keyword in filename_lower:
+                            keyword_audio_path = resource_path(f"assets/audio/agonsa/{audio_name}")
+                            if os.path.exists(keyword_audio_path):
+                                audio_path = keyword_audio_path
+                                print(f"Found keyword AGONSA audio for {question_file}: {audio_name}")
+                            break
                 
                 # Third, check level directory as fallback
                 if not audio_path:
@@ -2552,8 +2690,29 @@ class PhotoSlideshowGame:
         self.reward_start_time = pygame.time.get_ticks()
         self.current_state = "level_reward"
         
+        # Load reward video (CORRECT.mp4 or WRONG.mp4) for correct/wrong
+        if reward_type in ('correct', 'wrong') and MOVIEPY_AVAILABLE:
+            self._close_reward_video()
+            try:
+                path = resource_path(f"videos/REWARD/{reward_type.upper()}.mp4")
+                if os.path.exists(path):
+                    self.reward_video_clip = VideoFileClip(path)
+                    self.reward_video_start_time = pygame.time.get_ticks()
+            except Exception as e:
+                print(f"Error loading reward video: {e}")
+                self.reward_video_clip = None
+        
         # Play reward audio
         self.play_reward_audio(reward_type)
+    
+    def _close_reward_video(self):
+        """Close the correct/wrong reward video clip"""
+        if self.reward_video_clip:
+            try:
+                self.reward_video_clip.close()
+            except Exception:
+                pass
+            self.reward_video_clip = None
     
     def show_mission_complete(self, sublevel_string: str):
         """Show mission complete screen after sublevel or level completion"""
@@ -2641,14 +2800,18 @@ class PhotoSlideshowGame:
             elif event.key == pygame.K_ESCAPE or event.key == pygame.K_SPACE:
                 # Continue after reward
                 self.showing_reward = False
+                self._close_reward_video()
                 # Check if we came from exercise level
                 if hasattr(self, 'previous_state_before_reward') and self.previous_state_before_reward == "exercise_level":
-                    # Return to exercise level and reset inputs
-                    self.current_state = "exercise_level"
+                    # Return to exercises flow
                     if self.reward_type == 'correct':
-                        # Clear inputs on correct answer
+                        # On correct, proceed to next exercise level
+                        if self.current_exercise_level < 10:
+                            self.current_exercise_level += 1
+                        # Reset inputs for the next level
                         self.exercise_inputs = ["", "", ""]
                         self.exercise_active_input = 0
+                    self.current_state = "exercise_level"
                     # Reset the tracking
                     self.previous_state_before_reward = None
                 elif self.current_question_index >= len(self.level_questions):
@@ -2663,14 +2826,18 @@ class PhotoSlideshowGame:
             if event.button == 1:  # Left mouse button
                 # Continue after reward
                 self.showing_reward = False
+                self._close_reward_video()
                 # Check if we came from exercise level
                 if hasattr(self, 'previous_state_before_reward') and self.previous_state_before_reward == "exercise_level":
-                    # Return to exercise level and reset inputs
-                    self.current_state = "exercise_level"
+                    # Return to exercises flow
                     if self.reward_type == 'correct':
-                        # Clear inputs on correct answer
+                        # On correct, proceed to next exercise level
+                        if self.current_exercise_level < 10:
+                            self.current_exercise_level += 1
+                        # Reset inputs for the next level
                         self.exercise_inputs = ["", "", ""]
                         self.exercise_active_input = 0
+                    self.current_state = "exercise_level"
                     # Reset the tracking
                     self.previous_state_before_reward = None
                 elif self.current_question_index >= len(self.level_questions):
@@ -2706,13 +2873,7 @@ class PhotoSlideshowGame:
                 self.screen.blit(scaled_question, question_rect)
                 content_rect = question_rect
             
-            # Auto-open text input for solve questions
-            if (question_data.get('needs_text_input', False) and
-                not self.text_input_active and
-                not question_data.get('text_input_opened', False)):
-                self.text_input_active = True
-                self.text_input_value = ""
-                question_data['text_input_opened'] = True
+            # Solve questions: user must press SPACE first to show input (no auto-open)
         else:
             # No more questions
             title = self.font_large.render("Level Complete!", True, WHITE)
@@ -2806,9 +2967,9 @@ class PhotoSlideshowGame:
         reward_path = None
         content_rect = None
         if self.reward_type == 'correct':
-            reward_path = resource_path("videos/REWARD/CORRECT.gif")
+            reward_path = resource_path("videos/REWARD/CORRECT.mp4")
         elif self.reward_type == 'wrong':
-            reward_path = resource_path("videos/REWARD/WRONG.gif")
+            reward_path = resource_path("videos/REWARD/WRONG.mp4")
         elif self.reward_type == 'stars':
             # Handle stars as MP4 video
             reward_path = resource_path("videos/REWARD/REWARD STARS.mp4")
@@ -2870,60 +3031,36 @@ class PhotoSlideshowGame:
                 self.screen.blit(reward_surface, reward_rect)
                 content_rect = None
         
-        if self.reward_type != 'stars' and reward_path and os.path.exists(reward_path):
+        if self.reward_type != 'stars' and self.reward_video_clip and MOVIEPY_AVAILABLE:
             try:
-                # Animate GIFs by loading frame sequence from disk
-                frames = self.load_gif_frames(reward_path)
-                if frames:
-                    frame_duration = 0.08  # 80ms per frame
-                    frame_index = int((pygame.time.get_ticks() / 1000.0) / frame_duration) % len(frames)
-                    reward_image = frames[frame_index]
+                # Play MP4 reward video (looping)
+                current_time = (pygame.time.get_ticks() - self.reward_video_start_time) / 1000.0
+                if self.reward_video_clip.duration > 0:
+                    current_time = current_time % self.reward_video_clip.duration
+                frame = self.reward_video_clip.get_frame(current_time)
+                if NUMPY_AVAILABLE:
+                    frame = np.swapaxes(frame, 0, 1)
+                    frame_surface = pygame.surfarray.make_surface(frame)
                 else:
-                    reward_image = pygame.image.load(reward_path)
-                
-                # Scale the image to fit the screen while maintaining aspect ratio
-                image_width, image_height = reward_image.get_size()
-                screen_ratio = self.screen_width / self.screen_height
-                image_ratio = image_width / image_height
-                
-                if image_ratio > screen_ratio:
-                    # Image is wider than screen
-                    new_width = self.screen_width
-                    new_height = int(self.screen_width / image_ratio)
-                else:
-                    # Image is taller than screen
-                    new_height = self.screen_height
-                    new_width = int(self.screen_height * image_ratio)
-                
-                # Scale the image
-                scaled_reward = pygame.transform.scale(reward_image, (new_width, new_height))
-                
-                # Center the image on screen
+                    frame_surface = pygame.image.frombuffer(frame.tobytes(), (frame.shape[1], frame.shape[0]), "RGB")
+                scaled_reward = self.scale_photo_to_fit(frame_surface)
                 reward_rect = scaled_reward.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                 self.screen.blit(scaled_reward, reward_rect)
                 content_rect = reward_rect
-                
-                print(f"Successfully loaded reward GIF: {reward_path}")
             except Exception as e:
-                print(f"Error loading reward GIF: {e}")
-                # Fallback to text
+                print(f"Error displaying reward video: {e}")
                 reward_text = self.reward_type.upper()
-                
                 reward_surface = self.font_large.render(reward_text, True, WHITE)
                 reward_rect = reward_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                 self.screen.blit(reward_surface, reward_rect)
                 content_rect = None
         elif self.reward_type != 'stars':
-            # Fallback text if GIF not found (for correct/wrong rewards)
+            # Fallback text if MP4 not loaded (for correct/wrong rewards)
             reward_text = self.reward_type.upper()
-            
             reward_surface = self.font_large.render(reward_text, True, WHITE)
             reward_rect = reward_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
             self.screen.blit(reward_surface, reward_rect)
             content_rect = None
-            
-            if reward_path:
-                print(f"Reward GIF not found: {reward_path}")
         
         # Instructions for navigation - on the reward image
         instruction_text = "Press SPACE or click to continue"
@@ -3199,6 +3336,14 @@ class PhotoSlideshowGame:
                     # Resume background music after VO/clip ends
                     pygame.mixer.music.set_endevent()
                     self.play_background_music()
+                elif event.type == self.level_intro_music_end_event and self.current_state == "level_intro":
+                    # Level intro track finished - play next part or mark all done
+                    next_index = self.level_intro_audio_index + 1
+                    if self.level_intro_audio_paths and next_index < len(self.level_intro_audio_paths):
+                        self._play_level_intro_audio_part(next_index)
+                    else:
+                        pygame.mixer.music.set_endevent()
+                        self.level_intro_all_audio_finished = True
                 elif event.type == pygame.VIDEORESIZE:
                     # Handle window resize
                     self.handle_window_resize(event.w, event.h)
@@ -3212,6 +3357,8 @@ class PhotoSlideshowGame:
                     running = self.handle_exercise_level_input(event)
                 elif self.current_state == "intro":
                     running = self.handle_intro_input(event)
+                elif self.current_state == "sublevel_vocab":
+                    running = self.handle_sublevel_vocab_input(event)
                 elif self.current_state == "level_intro":
                     running = self.handle_level_intro_input(event)
                 elif self.current_state == "map":
@@ -3246,6 +3393,8 @@ class PhotoSlideshowGame:
                 self.draw_exercise_level()
             elif self.current_state == "intro":
                 self.draw_intro()
+            elif self.current_state == "sublevel_vocab":
+                self.draw_sublevel_vocab()
             elif self.current_state == "level_intro":
                 self.draw_level_intro()
             elif self.current_state == "map":
@@ -3268,7 +3417,7 @@ class PhotoSlideshowGame:
                 self.draw_sublevel_selection()
             elif self.current_state == "mission_complete":
                 self.draw_mission_complete()
-            
+
             pygame.display.flip()
             self.clock.tick(FPS)
         
@@ -3300,19 +3449,41 @@ class PhotoSlideshowGame:
         """Start new game with intro sequence showing 5.png and playing intro audio"""
         self.current_state = "intro_new_game"
         
-        # Load intro image (5.png)
-        intro_path = resource_path("assets/photos/intro/5.png")
+        # Reset intro media state
+        self.intro_image = None
+        self.intro_video_clip = None
+        self.intro_video_playing = False
+        self.intro_video_start_time = 0
+        
+        # Load intro media (5.mp4 preferred)
+        intro_path = resource_path("assets/photos/intro/5.mp4")
         if os.path.exists(intro_path):
             try:
-                intro_image = pygame.image.load(intro_path)
-                self.intro_image = self.scale_photo_to_fit(intro_image)
-                print(f"Loaded intro image: {intro_path}")
-            except pygame.error as e:
-                print(f"Error loading intro image: {e}")
-                self.intro_image = None
+                if MOVIEPY_AVAILABLE:
+                    self.intro_video_clip = VideoFileClip(intro_path)
+                    self.intro_video_playing = True
+                    self.intro_video_start_time = pygame.time.get_ticks()
+                    print(f"Loaded intro video: {intro_path}")
+                else:
+                    print("MoviePy not available for intro video.")
+            except Exception as e:
+                print(f"Error loading intro video: {e}")
+                self.intro_video_clip = None
+                self.intro_video_playing = False
         else:
-            print(f"Intro image not found at {intro_path}")
-            self.intro_image = None
+            print(f"Intro video not found at {intro_path}")
+        
+        # Fallback image if video unavailable
+        if not self.intro_video_clip:
+            fallback_image_path = resource_path("assets/photos/intro/5.png")
+            if os.path.exists(fallback_image_path):
+                try:
+                    intro_image = pygame.image.load(fallback_image_path)
+                    self.intro_image = self.scale_photo_to_fit(intro_image)
+                    print(f"Loaded intro fallback image: {fallback_image_path}")
+                except pygame.error as e:
+                    print(f"Error loading intro fallback image: {e}")
+                    self.intro_image = None
         
         # Play intro audio (intro (1).mp3)
         audio_path = resource_path("assets/audio/VOICE OVER/intro (1) .mp3")
@@ -3331,7 +3502,24 @@ class PhotoSlideshowGame:
         self.screen.fill(BLACK)
         
         content_rect = None
-        if self.intro_image:
+        if self.intro_video_clip and self.intro_video_playing:
+            current_time = (pygame.time.get_ticks() - self.intro_video_start_time) / 1000.0
+            try:
+                if self.intro_video_clip.duration > 0:
+                    current_time = current_time % self.intro_video_clip.duration
+                frame = self.intro_video_clip.get_frame(current_time)
+                if NUMPY_AVAILABLE:
+                    frame = np.swapaxes(frame, 0, 1)
+                    frame_surface = pygame.surfarray.make_surface(frame)
+                else:
+                    frame_surface = pygame.image.frombuffer(frame.tobytes(), (frame.shape[1], frame.shape[0]), "RGB")
+                scaled_frame = self.scale_photo_to_fit(frame_surface)
+                intro_rect = scaled_frame.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                self.screen.blit(scaled_frame, intro_rect)
+                content_rect = intro_rect
+            except Exception as e:
+                print(f"Error displaying intro video frame: {e}")
+        elif self.intro_image:
             intro_rect = self.intro_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
             self.screen.blit(self.intro_image, intro_rect)
             content_rect = intro_rect
@@ -3345,10 +3533,24 @@ class PhotoSlideshowGame:
             if event.key == pygame.K_F11:
                 self.toggle_fullscreen()
             else:
+                if self.intro_video_clip:
+                    try:
+                        self.intro_video_clip.close()
+                    except Exception:
+                        pass
+                self.intro_video_clip = None
+                self.intro_video_playing = False
                 # Start with sublevel 1.1
                 self.start_level("1.1")
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
+                if self.intro_video_clip:
+                    try:
+                        self.intro_video_clip.close()
+                    except Exception:
+                        pass
+                self.intro_video_clip = None
+                self.intro_video_playing = False
                 self.start_level("1.1")
         return True
 
