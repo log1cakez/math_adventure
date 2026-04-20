@@ -84,6 +84,7 @@ class PhotoSlideshowGame:
         
         # Splash screen
         self.splash_video = self.load_splash_video()
+        self.splash_image = self.load_splash_image()
         self.second_page_video = self.load_second_page_video()
         self.select_image = self.load_select_image()
         self.exercise_level_images = self.load_exercise_level_images()
@@ -146,6 +147,9 @@ class PhotoSlideshowGame:
         self.splash_video_clip = None
         self.splash_video_playing = False
         self.splash_video_start_time = 0
+        self.splash_image_phase = True
+        self.splash_image_phase_start_time = pygame.time.get_ticks()
+        self.splash_image_phase_duration_ms = 2500
         self.second_page_video_clip = None
         self.second_page_video_playing = False
         self.second_page_video_start_time = 0
@@ -200,6 +204,21 @@ class PhotoSlideshowGame:
                 return None
         except Exception as e:
             print(f"Error loading splash video: {e}")
+            return None
+    
+    def load_splash_image(self) -> Optional[pygame.Surface]:
+        """Load the splash screen image shown on app open."""
+        splash_image_path = resource_path("assets/photos/FIRST PAGE/FIRST PAGE.jpeg")
+        try:
+            if os.path.exists(splash_image_path):
+                splash_image = pygame.image.load(splash_image_path)
+                splash_image = self.scale_photo_to_fit(splash_image)
+                print(f"Loaded splash image: {splash_image_path}")
+                return splash_image
+            print(f"Splash image not found at {splash_image_path}")
+            return None
+        except pygame.error as e:
+            print(f"Error loading splash image: {e}")
             return None
     
     def load_second_page_video(self) -> Optional[str]:
@@ -611,24 +630,47 @@ class PhotoSlideshowGame:
         self.screen.blit(instruction, instruction_rect)
 
     def draw_splash(self):
-        """Draw the splash screen with video"""
+        """Draw splash: first image, then opening video."""
         self.screen.fill(BLACK)
         
-        # Initialize video if not already playing
+        # Phase 1: show splash image briefly
+        if self.splash_image_phase:
+            elapsed = pygame.time.get_ticks() - self.splash_image_phase_start_time
+            if elapsed < self.splash_image_phase_duration_ms:
+                content_rect = None
+                if self.splash_image:
+                    splash_rect = self.splash_image.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                    self.screen.blit(self.splash_image, splash_rect)
+                    content_rect = splash_rect
+                    
+                    # Gear clickable area based on splash image bounds
+                    gear_x = splash_rect.x + splash_rect.width * 0.85
+                    gear_y = splash_rect.y + splash_rect.height * 0.1
+                    gear_size = 60
+                    self.gear_area = pygame.Rect(gear_x, gear_y, gear_size, gear_size)
+                else:
+                    title = self.font_large.render("Math Adventure", True, WHITE)
+                    title_rect = title.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 50))
+                    self.screen.blit(title, title_rect)
+                    self.gear_area = None
+                
+                instruction_text = "Opening..."
+                self.draw_footer_instruction(instruction_text, content_rect)
+                return
+            # Move to video phase after image duration
+            self.splash_image_phase = False
+        
+        # Phase 2: play opening video
         if not self.splash_video_playing and self.splash_video:
             self.start_splash_video()
         
-        # Display current video frame
         if self.splash_video_clip and self.splash_video_playing:
             current_time = (pygame.time.get_ticks() - self.splash_video_start_time) / 1000.0
             try:
-                # Loop video until user input
                 if self.splash_video_clip.duration > 0:
                     current_time = current_time % self.splash_video_clip.duration
                 frame = self.splash_video_clip.get_frame(current_time)
-                # Convert numpy array to pygame surface
                 if NUMPY_AVAILABLE:
-                    # MoviePy gives (H,W,3), pygame needs (W,H,3)
                     frame = np.swapaxes(frame, 0, 1)
                     frame_surface = pygame.surfarray.make_surface(frame)
                 else:
@@ -637,41 +679,26 @@ class PhotoSlideshowGame:
                         (frame.shape[1], frame.shape[0]),
                         "RGB"
                     )
-                
-                # Scale to fit screen
                 scaled_frame = self.scale_photo_to_fit(frame_surface)
-                frame_rect = scaled_frame.get_rect(
-                    center=(self.screen_width // 2, self.screen_height // 2)
-                )
+                frame_rect = scaled_frame.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
                 self.screen.blit(scaled_frame, frame_rect)
                 
-                # Gear clickable area
                 gear_x = frame_rect.x + frame_rect.width * 0.85
                 gear_y = frame_rect.y + frame_rect.height * 0.1
                 gear_size = 60
                 self.gear_area = pygame.Rect(gear_x, gear_y, gear_size, gear_size)
                 
-                # Instructions
                 instruction_text = "Click anywhere to continue, or click gear for mechanics..."
                 self.draw_footer_instruction(instruction_text, frame_rect)
-                return  # Avoid drawing twice
+                return
             except Exception as e:
                 print(f"Error displaying splash video frame: {e}")
-                # Fallback frame
-                title = self.font_large.render("Math Adventure", True, WHITE)
-                title_rect = title.get_rect(
-                    center=(self.screen_width // 2, self.screen_height // 2 - 50)
-                )
-                self.screen.blit(title, title_rect)
-        else:
-            # Fallback if no video
-            title = self.font_large.render("Math Adventure", True, WHITE)
-            title_rect = title.get_rect(
-                center=(self.screen_width // 2, self.screen_height // 2 - 50)
-            )
-            self.screen.blit(title, title_rect)
         
-        # Instructions to proceed - moved to footer (fallback)
+        # Final fallback
+        title = self.font_large.render("Math Adventure", True, WHITE)
+        title_rect = title.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 50))
+        self.screen.blit(title, title_rect)
+        self.gear_area = None
         instruction_text = "Click anywhere to continue, or click gear for mechanics..."
         self.draw_footer_instruction(instruction_text)
     
@@ -1167,8 +1194,11 @@ class PhotoSlideshowGame:
             elif event.key == pygame.K_ESCAPE:
                 return False  # Quit game
             else:
-                # Any other key goes to second page
-                self.current_state = "second_page"
+                # During image phase, skip to opening video first
+                if self.splash_image_phase:
+                    self.splash_image_phase = False
+                else:
+                    self.current_state = "second_page"
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
                 mouse_pos = pygame.mouse.get_pos()
@@ -1179,8 +1209,11 @@ class PhotoSlideshowGame:
                 elif self.top_right_area and self.top_right_area.collidepoint(mouse_pos):
                     self.current_state = "mechanics"
                 else:
-                    # Click anywhere else goes to second page
-                    self.current_state = "second_page"
+                    # During image phase, skip to opening video first
+                    if self.splash_image_phase:
+                        self.splash_image_phase = False
+                    else:
+                        self.current_state = "second_page"
         return True
     
     def handle_second_page_input(self, event):
@@ -1726,8 +1759,11 @@ class PhotoSlideshowGame:
             elif event.key == pygame.K_ESCAPE:
                 return False  # Quit game
             else:
-                # Any other key press goes to second page
-                self.current_state = "second_page"
+                # During image phase, skip to opening video first
+                if self.splash_image_phase:
+                    self.splash_image_phase = False
+                else:
+                    self.current_state = "second_page"
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
                 mouse_pos = pygame.mouse.get_pos()
@@ -1736,20 +1772,14 @@ class PhotoSlideshowGame:
                 gear_clicked = self.gear_area and self.gear_area.collidepoint(mouse_pos)
                 top_right_clicked = False
                 
-                # Also check if clicked in the top-right area of the video
-                # Use a default area if video is playing
-                if self.splash_video_playing:
-                    # Estimate clickable area based on screen size
-                    top_right_area = pygame.Rect(self.screen_width * 0.85, 0, self.screen_width * 0.15, self.screen_height * 0.2)
-                    top_right_clicked = top_right_area.collidepoint(mouse_pos)
-                else:
-                    top_right_clicked = False
-                
                 if gear_clicked or top_right_clicked:
                     self.current_state = "mechanics"
                 else:
-                    # Click anywhere else goes to second page
-                    self.current_state = "second_page"
+                    # During image phase, skip to opening video first
+                    if self.splash_image_phase:
+                        self.splash_image_phase = False
+                    else:
+                        self.current_state = "second_page"
         return True
     
     def handle_second_page_input(self, event):
